@@ -89,9 +89,11 @@ HF_ENDPOINT=https://hf-mirror.com
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+MIN_EVIDENCE_SCORE=0.30
 ```
 
 如果没有配置 `OPENAI_API_KEY`，检索仍然可用；点击 AI 回答会返回明确的配置提示和引用来源。
+如果检索结果最高分低于 `MIN_EVIDENCE_SCORE`，AI 回答会直接拒答，避免资料不足时硬编。
 
 ## API 快速检查
 
@@ -127,7 +129,7 @@ cd D:\vscode\动效\personal-kb\backend
 python scripts\eval_retrieval.py
 ```
 
-脚本会检查 5 个问题是否命中预期文档。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索有没有变好。
+脚本会检查 5 个检索问题是否命中预期文档，并检查问答是否带引用来源、无依据问题是否拒答。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索和回答有没有变好。
 
 ## 下一步练习
 

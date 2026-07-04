@@ -42,6 +42,7 @@ HF_ENDPOINT=https://hf-mirror.com
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+MIN_EVIDENCE_SCORE=0.30
 ```
 
 说明：
@@ -52,6 +53,7 @@ OPENAI_MODEL=gpt-4o-mini
 - `OPENAI_API_KEY` 不填时，只能做语义检索，不能生成 AI 回答。
 - `OPENAI_BASE_URL` 需要填写 OpenAI 兼容接口地址，通常要包含 `/v1`，例如 `https://example.com/v1`。
 - `EMBEDDING_PROVIDER=fastembed` 时，第一次索引会下载开源 embedding 模型到本机缓存，不会下载到项目目录。
+- `MIN_EVIDENCE_SCORE` 是 Self-RAG 证据阈值。检索最高分低于它时，问答接口会直接拒答，避免资料不足时硬编。
 
 ## 4. 启动后端
 
@@ -128,6 +130,7 @@ docs/RAG_OPTIMIZATION_PLAN.md
 - Rerank v0：用向量分和关键词重合度做轻量重排。
 - Sentence Window / Context Compression v0：回答时补前后文，并控制上下文长度。
 - Feedback Loop v0：引用和检索片段支持“有帮助 / 没帮助”，反馈会存入 SQLite 并小幅影响后续排序。
+- Self-RAG v1：问答前检查证据分，低于 `MIN_EVIDENCE_SCORE` 时不调用 AI，直接返回“文档中没有找到依据”。
 
 因为索引策略会影响向量内容，换电脑或拉取新代码后建议重新点击一次“索引文档”。
 

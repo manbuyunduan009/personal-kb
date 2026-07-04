@@ -7,6 +7,12 @@ from .retrieval import compress_context, query_variants, rerank_hits
 from .vector_store import VectorStore
 
 
+INSUFFICIENT_EVIDENCE_MESSAGE = (
+    "文档中没有找到依据。当前检索结果相关度低于证据阈值，"
+    "已停止调用 AI 生成回答。"
+)
+
+
 class RagService:
     def __init__(
         self,
@@ -16,6 +22,7 @@ class RagService:
         openai_base_url: str,
         openai_model: str,
         feedback_scores: Optional[Dict[Tuple[str, int], float]] = None,
+        min_evidence_score: float = 0.3,
     ):
         self.embeddings = embeddings
         self.vector_store = vector_store
@@ -23,6 +30,7 @@ class RagService:
         self.openai_base_url = openai_base_url
         self.openai_model = openai_model
         self.feedback_scores = feedback_scores or {}
+        self.min_evidence_score = min_evidence_score
 
     def search(self, query: str, limit: int = 5) -> List[Dict[str, object]]:
         query = query.strip()
@@ -50,7 +58,16 @@ class RagService:
 
     def answer(self, question: str) -> Dict[str, object]:
         hits = self.search(question, limit=5)
-        citations = [self._citation_from_hit(hit) for hit in hits]
+        evidence_hits = self._evidence_hits(hits)
+        citations = [self._citation_from_hit(hit) for hit in evidence_hits]
+
+        if not evidence_hits:
+            best_score = max((float(hit.get("score", 0.0)) for hit in hits), default=0.0)
+            return {
+                "answer": "%s 最高相关度 %.2f，阈值 %.2f。"
+                % (INSUFFICIENT_EVIDENCE_MESSAGE, best_score, self.min_evidence_score),
+                "citations": [],
+            }
 
         if not self.openai_api_key:
             return {
@@ -67,7 +84,7 @@ class RagService:
                 citation["chunk_header"],
                 self._context_from_hit(question, hit),
             )
-            for index, (hit, citation) in enumerate(zip(hits, citations))
+            for index, (hit, citation) in enumerate(zip(evidence_hits, citations))
         )
 
         client = OpenAI(api_key=self.openai_api_key, base_url=self.openai_base_url)
@@ -99,6 +116,13 @@ class RagService:
             "answer": response.choices[0].message.content or "",
             "citations": citations,
         }
+
+    def _evidence_hits(self, hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
+        return [
+            hit
+            for hit in hits
+            if float(hit.get("score", 0.0)) >= self.min_evidence_score
+        ]
 
     @staticmethod
     def _citation_from_hit(hit: Dict[str, object]) -> Dict[str, object]:

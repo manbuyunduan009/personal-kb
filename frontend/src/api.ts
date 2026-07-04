@@ -10,6 +10,7 @@ export type Health = {
   vector_ready: boolean;
   vector_error: string;
   openai_configured: boolean;
+  min_evidence_score: number;
 };
 
 export type DocumentItem = {

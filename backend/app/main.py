@@ -63,6 +63,7 @@ def health():
         "vector_ready": vector_ready,
         "vector_error": vector_error,
         "openai_configured": bool(settings.openai_api_key),
+        "min_evidence_score": settings.min_evidence_score,
     }
 
 
@@ -105,6 +106,7 @@ def search(request: SearchRequest):
         openai_base_url=settings.openai_base_url,
         openai_model=settings.openai_model,
         feedback_scores=repository.feedback_scores(),
+        min_evidence_score=settings.min_evidence_score,
     )
     return {"results": rag.search(request.query, limit=request.limit)}
 
@@ -122,6 +124,7 @@ def chat(request: ChatRequest):
         openai_base_url=settings.openai_base_url,
         openai_model=settings.openai_model,
         feedback_scores=repository.feedback_scores(),
+        min_evidence_score=settings.min_evidence_score,
     )
     return rag.answer(request.question)
 

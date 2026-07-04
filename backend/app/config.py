@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    min_evidence_score: float = 0.3
 
     model_config = SettingsConfigDict(
         env_file=".env",
