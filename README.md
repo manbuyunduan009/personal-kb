@@ -28,6 +28,11 @@ personal-kb
       └─ styles.css
 ```
 
+## 重要文档
+
+- [交付说明](docs/HANDOFF.md)：换电脑、部署到办公电脑、首次验收、常见问题。
+- [RAG 质量说明](docs/RAG_QUALITY.md)：为什么 RAG 容易效果不好，以及本项目的质量路线。
+
 ## 后端启动
 
 ```powershell
