@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import DocumentRepository
+from .domain_terms import load_domain_terms, mine_domain_term_candidates
 from .embeddings import create_embedding_provider
 from .indexer import Indexer
 from .product_expert import (
@@ -168,6 +169,25 @@ def feedback_summary():
 def list_rag_traces(limit: int = Query(default=20, ge=1, le=100)):
     _, repository = repository_service()
     return {"traces": repository.list_rag_traces(limit=limit)}
+
+
+@app.get("/api/domain-terms")
+def list_domain_terms():
+    return {
+        "terms": load_domain_terms(),
+        "strategy": "通用术语表只负责把用户说法翻译成检索词，不直接作为答案依据。",
+    }
+
+
+@app.get("/api/domain-terms/candidates")
+def list_domain_term_candidates(limit: int = Query(default=40, ge=1, le=100)):
+    _, repository = repository_service()
+    documents = repository.list_documents()
+    traces = repository.list_rag_traces(limit=80)
+    return {
+        "candidates": mine_domain_term_candidates(documents, traces, limit=limit),
+        "strategy": "候选来自已索引文档和低分/拒答 trace；人工只需要确认、合并、删除或改名。",
+    }
 
 
 @app.get("/api/product/requirements")

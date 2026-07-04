@@ -1,11 +1,12 @@
 import re
 from typing import Dict, List, Optional, Tuple
 
+from .domain_terms import expand_query_terms
+
 
 QUERY_EXPANSIONS = [
     (["需求", "功能", "模块", "页面"], "需求 功能 模块 页面 规则 验收"),
     (["哪个游戏", "哪个项目", "什么游戏", "所属", "属于", "项目"], "项目/部门所属 项目所属 所属项目 游戏 产品 需求基础信息 概域名"),
-    (["载体", "承载", "形式", "平台", "终端", "端上", "移动端", "小程序"], "载体 承载形式 活动形式 平台 终端 端 小程序 移动端 H5 网页 PC App 微信小程序"),
     (["目标用户", "用户", "谁"], "目标用户 用户人群 使用对象 角色"),
     (["解决", "问题", "痛点"], "背景 痛点 问题 目标 价值"),
     (["阶段", "计划", "排期", "时间"], "阶段 计划 排期 时间 里程碑 状态"),
@@ -24,6 +25,10 @@ def query_variants(query: str) -> List[str]:
     for keywords, expansion in QUERY_EXPANSIONS:
         if any(keyword in query for keyword in keywords):
             variants.append("%s %s" % (query.strip(), expansion))
+
+    domain_expansion = expand_query_terms(query)
+    if domain_expansion:
+        variants.append("%s %s" % (query.strip(), " ".join(domain_expansion)))
 
     for part in re.split(r"[，,；;、\n]|以及|并且|和", query):
         cleaned = part.strip()

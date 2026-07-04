@@ -291,6 +291,35 @@ export type SolutionRecommendation = {
   limitations: string[];
 };
 
+export type DomainTerm = {
+  id: string;
+  label: string;
+  category: string;
+  aliases: string[];
+  search_terms: string[];
+  evidence_terms: string[];
+};
+
+export type DomainTermCandidate = {
+  term: string;
+  normalized: string;
+  category: string;
+  status: "known" | "candidate" | string;
+  sources: string[];
+  matched_terms: string[];
+  suggested_aliases: string[];
+  suggested_search_terms: string[];
+  examples: string[];
+  reason: string;
+  confidence: number;
+  source_count: number;
+};
+
+export type DomainTermCandidatesResult = {
+  candidates: DomainTermCandidate[];
+  strategy: string;
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -328,6 +357,14 @@ export function getTraces(limit = 12) {
 
 export function getProductRequirements() {
   return request<{ requirements: RequirementGroup[] }>("/api/product/requirements");
+}
+
+export function getDomainTerms() {
+  return request<{ terms: DomainTerm[]; strategy: string }>("/api/domain-terms");
+}
+
+export function getDomainTermCandidates(limit = 40) {
+  return request<DomainTermCandidatesResult>(`/api/domain-terms/candidates?limit=${limit}`);
 }
 
 export function getRequirementCard(requirementKey: string) {

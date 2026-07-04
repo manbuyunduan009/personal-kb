@@ -528,6 +528,17 @@ h3 {
   font-weight: 800;
 }
 
+.panel-action {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .version-tags {
   display: flex;
   flex-wrap: wrap;
@@ -545,6 +556,7 @@ h3 {
 }
 
 .requirement-card,
+.term-panel,
 .similar-panel,
 .timeline-panel,
 .recommendation-panel,
@@ -557,12 +569,53 @@ h3 {
 }
 
 .requirement-card p,
+.term-panel p,
 .similar-panel p,
 .timeline-panel p,
 .recommendation-panel p,
 .change-analysis p {
   margin: 0;
   line-height: 1.55;
+}
+
+.term-panel small {
+  color: #6b665d;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.term-list {
+  display: grid;
+  gap: 8px;
+}
+
+.term-item {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.2);
+  background: #f8f5ec;
+}
+
+.term-item header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.term-item header b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.term-item header span {
+  min-width: 58px;
+  padding: 3px 6px;
+  border: 1px solid rgba(32, 33, 29, 0.28);
+  background: #ebe3d2;
+  text-align: center;
+  font-size: 11px;
 }
 
 .recommendation-panel small {

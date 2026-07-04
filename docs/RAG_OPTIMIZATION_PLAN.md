@@ -30,6 +30,7 @@
 | 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v3：支持 Citation Check 分布、风险率和平均支撑分统计。 |
 | 15 | Citation Check | 检查答案里的结论是否能被引用来源支撑，减少有引用但乱答。 | 已做 v1：接入 `/api/chat`、trace、前端诊断和评测报告；只记录风险，不拦截答案。 |
 | 16 | SQLite FTS/BM25 | 用数据库全文检索补强专有名词、字段、编号等硬关键词召回。 | 已做 v1：`document_chunks_fts` + fallback keyword 表，和向量召回合并。 |
+| 17 | Domain Terms | 把“用户说法”和“文档说法”连起来，例如载体、承接页、入口、移动端。 | 已做 v1：通用词表参与 query 扩展和 Self-RAG 概念证据判断，并从文档/低分 trace 挖候选。 |
 
 ## 3. 模块状态和持续优化入口
 
@@ -43,6 +44,7 @@
 | Context Enriched | 已完成 v1 | chunk 元数据保存标题、上文窗口、下文窗口、摘要；回答时优先使用 parent context。 | `backend/app/chunking.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按标题/语义构造 parent，而不是固定 3 个 child 一组。 |
 | Parent-Child Chunk | 已完成 v1 | 每 3 个 child chunk 生成一个 parent context；索引和引用仍落在 child；AI 回答上下文优先使用 parent。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按章节、标题、表格边界构造 parent；根据问题类型动态控制 parent 长度。 |
 | Field-aware Retrieval | 已完成 v1 | 从文档表格/键值行提取文档级属性，把“项目/所属/负责人/日期/域名/编号”等字段传播到每个 chunk，并参与 embedding、关键词召回、rerank 和 prompt。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 保留原始表格结构；给字段类型加权；把字段抽取规则配置化；支持更多业务字段。 |
+| Domain Terms | 已完成 v1 | 用通用术语表扩展抽象问题；从文档和低分/拒答 trace 挖候选词，前端可查看候选。 | `backend/config/domain_terms.json`, `backend/app/domain_terms.py`, `backend/app/retrieval.py`, `backend/app/rag.py`, `frontend/src/main.tsx` | 加确认/合并/忽略入口；把确认结果写入 SQLite 并导出回词表；把术语变更纳入评测对比。 |
 | Query Transformation | 已完成 v1 | 常规检索用规则 query variant；Self-RAG 低分补救时调用 `query_rewrite.py` 做 LLM 改写，失败时回退规则。 | `backend/app/retrieval.py`, `backend/app/query_rewrite.py`, `backend/app/rag.py` | 支持子问题拆解；为多轮追问注入对话上下文；按问题类型决定是否调用 LLM。 |
 | SQLite FTS/BM25 | 已完成 v1 | 入库时同步写 `document_chunks_keyword` 和 `document_chunks_fts`；检索时调用 `keyword_search`，FTS5 可用时使用 BM25，不可用时降级关键词扫描。 | `backend/app/vector_store.py`, `backend/app/rag.py` | 给标题/字段/正文设置不同权重；支持精确短语；进一步优化中文分词。 |
 | Hybrid Search | 已完成 v1 | 向量召回、BM25/关键词召回并行，合并候选后 rerank；前端展示召回方式、BM25 分和命中关键词。 | `backend/app/vector_store.py`, `backend/app/retrieval.py`, `backend/app/rag.py`, `frontend/src/main.tsx` | 按问题类型调权重；把 topK 候选明细写进 trace。 |
@@ -263,7 +265,38 @@
 - 解决方案：新增通用概念别名扩展，把“载体、承载、形式、平台、终端”等查询扩展到“小程序、移动端、H5、网页、App、微信小程序”；同时新增概念证据判断，要求命中文本同时包含问题主体和具体承载形态，才允许略低于阈值的结果进入证据。
 - 验证用例：加入“游园会的载体是啥”相关测试，要求低于 0.30 但具备“问题主体 + 小程序/移动端”证据的结果不被误拒答。
 
-### 4.10 RAG Trace 观测系统
+### 4.10 Domain Terms + Term Mining
+
+做法：
+
+1. 新增 `backend/config/domain_terms.json`，放行业通用术语表。
+2. 新增 `domain_terms.py`，负责加载词表、扩展 query、生成概念证据组。
+3. `query_variants` 读取术语表，把抽象问法扩展成具体检索词。
+4. Self-RAG 的概念证据判断也读取术语表，不再把别名写死在 `rag.py`。
+5. 新增 `/api/domain-terms` 查看当前通用术语表。
+6. 新增 `/api/domain-terms/candidates` 从已索引文档和低分/拒答 trace 中挖术语候选。
+7. 前端“产品专家”面板新增“挖术语”，展示候选词、归一名、来源、置信度和样例。
+
+为什么这样做：
+
+- 真实工作里术语太多，不能靠人工从零维护。
+- 通用词表给系统起步能力，文档挖掘发现你资料里的真实表达，低分问题暴露检索缺口。
+- 人工应该只负责纠正：确认、合并、删除、改归一名，而不是一条条手写词典。
+
+当前边界：
+
+- v1 只展示候选，不直接写回正式词表。
+- 候选提取是规则版，可能出现噪音词，需要人工复核。
+- 词表当前用 JSON，避免新增 YAML 依赖；后续可升级成可编辑配置页。
+
+后续你可以单独优化：
+
+- 给候选加“确认 / 合并 / 忽略 / 改名”按钮，并写入 SQLite。
+- 把确认后的术语导出为 `domain_terms.json`，进入 Git 管理。
+- 用 LLM 对候选做解释和归类，但仍由人工确认后入库。
+- 把术语变更前后的命中率加入评测报告。
+
+### 4.11 RAG Trace 观测系统
 
 做法：
 
@@ -294,7 +327,7 @@
 - 生成评测报表：平均分、拒答率、补救率、平均耗时。
 - 把 trace 和用户反馈关联起来，分析“用户点踩的回答当时检索链路哪里出问题”。
 
-### 4.11 Parent-Child Chunk
+### 4.12 Parent-Child Chunk
 
 做法：
 
@@ -323,7 +356,7 @@
 - 不重复存 parent，而是单独建 parent 表，通过 `parent_id` 关联 child。
 - 按问题类型动态决定是用 child、parent，还是更大的 document window。
 
-### 4.12 Eval Report
+### 4.13 Eval Report
 
 做法：
 
@@ -359,7 +392,7 @@ cd D:\vscode\动效\personal-kb\backend
 - 加趋势对比：本次 vs 上次。
 - 把 Citation Check 的风险样例导出成待优化问题集。
 
-### 4.13 Citation Check
+### 4.14 Citation Check
 
 做法：
 
@@ -399,7 +432,7 @@ cd D:\vscode\动效\personal-kb\backend
 - 在 trace 详情页显示完整证据对比。
 - 后续再用 LLM 做 claim-by-claim 检查，但要保留规则版作为低成本底线。
 
-### 4.14 SQLite FTS/BM25
+### 4.15 SQLite FTS/BM25
 
 做法：
 
@@ -427,7 +460,7 @@ cd D:\vscode\动效\personal-kb\backend
 - 支持用户输入引号时做精确短语搜索。
 - 把 topK 候选和分数拆解写进 trace，方便看 BM25 是如何影响排序的。
 
-### 4.15 LLM Query Rewrite
+### 4.16 LLM Query Rewrite
 
 做法：
 
@@ -455,7 +488,7 @@ cd D:\vscode\动效\personal-kb\backend
 - 按问题类型决定是否启用 LLM 改写。
 - 把 query rewrite 前后的命中变化纳入 Eval Report。
 
-### 4.16 Eval Report 对比
+### 4.17 Eval Report 对比
 
 做法：
 

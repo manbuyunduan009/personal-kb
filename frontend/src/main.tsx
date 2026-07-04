@@ -13,6 +13,7 @@ import {
   Search,
   Server,
   Sparkles,
+  Tags,
   ThumbsDown,
   ThumbsUp
 } from "lucide-react";
@@ -23,7 +24,10 @@ import {
   Citation,
   CitationCheck,
   DocumentItem,
+  DomainTermCandidate,
+  DomainTermCandidatesResult,
   getDocuments,
+  getDomainTermCandidates,
   getHealth,
   getProductRequirements,
   getRequirementCard,
@@ -67,6 +71,7 @@ function App() {
   const [results, setResults] = useState<SearchHit[]>([]);
   const [traces, setTraces] = useState<RagTrace[]>([]);
   const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
+  const [termCandidates, setTermCandidates] = useState<DomainTermCandidatesResult | null>(null);
   const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
   const [similarRequirements, setSimilarRequirements] = useState<SimilarRequirementsResult | null>(null);
   const [requirementTimeline, setRequirementTimeline] = useState<RequirementTimeline | null>(null);
@@ -74,7 +79,17 @@ function App() {
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [loading, setLoading] = useState<
-    "index" | "search" | "chat" | "product" | "card" | "similar" | "timeline" | "recommendation" | "boot" | ""
+    | "index"
+    | "search"
+    | "chat"
+    | "product"
+    | "card"
+    | "similar"
+    | "timeline"
+    | "recommendation"
+    | "terms"
+    | "boot"
+    | ""
   >("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
@@ -273,6 +288,21 @@ function App() {
       const result = await getSolutionRecommendation(group.requirement_key);
       setSolutionRecommendation(result);
       setProductMessage(`已生成方案建议：${group.requirement_title}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleLoadTermCandidates() {
+    setProductMessage("");
+    setLoading("terms");
+    setError("");
+    try {
+      const result = await getDomainTermCandidates(40);
+      setTermCandidates(result);
+      setProductMessage(`已挖掘术语候选：${result.candidates.length} 个`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -520,6 +550,10 @@ function App() {
 
           <section className="product-expert-panel">
             <h3>产品专家</h3>
+            <button className="panel-action" onClick={handleLoadTermCandidates} disabled={loading === "terms"}>
+              {loading === "terms" ? <Loader2 className="spin" size={15} /> : <Tags size={15} />}
+              挖术语
+            </button>
             {requirements.length === 0 && <p className="empty">索引文档后会在这里识别需求分组。</p>}
             {productMessage && <p className="diagnostic-note">{productMessage}</p>}
             <div className="requirement-list">
@@ -570,6 +604,38 @@ function App() {
                 </article>
               ))}
             </div>
+
+            {termCandidates && (
+              <article className="term-panel">
+                <h3>术语候选</h3>
+                <p>{termCandidates.strategy}</p>
+                {termCandidates.candidates.length === 0 && <p className="empty">当前还没有可审阅的术语候选。</p>}
+                <div className="term-list">
+                  {termCandidates.candidates.slice(0, 12).map((candidate) => (
+                    <article className="term-item" key={`${candidate.status}-${candidate.term}-${candidate.normalized}`}>
+                      <header>
+                        <b>{candidate.term}</b>
+                        <span>{candidateStatusLabel(candidate)}</span>
+                      </header>
+                      <small>
+                        归一：{candidate.normalized} · {candidate.category} · 置信度{" "}
+                        {Math.round(candidate.confidence * 100)}%
+                      </small>
+                      <p>{candidate.reason}</p>
+                      {candidate.matched_terms.length > 0 && (
+                        <div className="version-tags">
+                          {candidate.matched_terms.slice(0, 8).map((term) => (
+                            <span key={`${candidate.term}-${term}`}>{term}</span>
+                          ))}
+                        </div>
+                      )}
+                      <small>来源：{candidate.sources.map(termSourceLabel).join(" / ")}</small>
+                      {candidate.examples[0] && <small>样例：{candidate.examples[0]}</small>}
+                    </article>
+                  ))}
+                </div>
+              </article>
+            )}
 
             {requirementCard && (
               <article className="requirement-card">
@@ -895,6 +961,18 @@ function evidenceKindLabel(kind: string) {
   if (kind === "similar_requirement") return "相似历史";
   if (kind === "timeline_version") return "历史版本";
   return "证据";
+}
+
+function candidateStatusLabel(candidate: DomainTermCandidate) {
+  if (candidate.status === "known") return "已在词表";
+  if (candidate.sources.includes("low_score_question")) return "优先复核";
+  return "候选";
+}
+
+function termSourceLabel(source: string) {
+  if (source === "document") return "文档";
+  if (source === "low_score_question") return "低分问题";
+  return source;
 }
 
 function FeedbackActions({

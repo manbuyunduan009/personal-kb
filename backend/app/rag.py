@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from openai import OpenAI, OpenAIError
 
 from .citation_check import check_citation_support
+from .domain_terms import concept_evidence_groups
 from .embeddings import EmbeddingProvider
 from .query_rewrite import rewrite_queries
 from .retrieval import compress_context, format_field_facts, keyword_recall_hits, query_variants, rerank_hits
@@ -53,12 +54,6 @@ FIELD_EVIDENCE_GROUPS = [
     (
         ["载体", "承载", "形式", "平台", "终端", "小程序", "移动端", "h5", "app", "端"],
         ["载体", "承载", "形式", "平台", "终端", "端上", "小程序", "移动端", "什么", "哪个"],
-    ),
-]
-CONCEPT_EVIDENCE_GROUPS = [
-    (
-        ["载体", "承载", "形式", "平台", "终端", "端上"],
-        ["小程序", "移动端", "h5", "H5", "网页", "web", "PC", "App", "APP", "微信小程序", "端"],
     ),
 ]
 CHILD_CONTEXT_MAX_CHARS = 900
@@ -431,7 +426,7 @@ class RagService:
             ]
         )
         haystack_lower = haystack.lower()
-        for question_markers, evidence_markers in CONCEPT_EVIDENCE_GROUPS:
+        for question_markers, evidence_markers in concept_evidence_groups():
             if not any(marker in question for marker in question_markers):
                 continue
             if not any(marker.lower() in haystack_lower for marker in evidence_markers):
