@@ -44,6 +44,26 @@ def test_indexer_skips_unchanged_files(tmp_path: Path):
     assert second["skipped"][0]["reason"] == "unchanged"
 
 
+def test_indexer_writes_parent_chunk_metadata(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.md").write_text("A" * 1900, encoding="utf-8")
+
+    repository = DocumentRepository(tmp_path / "kb.sqlite3")
+    vector_store = FakeVectorStore()
+    indexer = Indexer(docs, repository, vector_store, FakeEmbeddings())
+
+    result = indexer.run()
+
+    assert len(result["indexed"]) == 1
+    replacement = vector_store.replacements[0]
+    chunk_metadatas = replacement["chunk_metadatas"]
+    assert len(chunk_metadatas) > 1
+    assert chunk_metadatas[0]["parent_index"] == 0
+    assert chunk_metadatas[0]["parent_context"]
+    assert all("parent_context" in metadata for metadata in chunk_metadatas)
+
+
 def test_indexer_ignores_office_temporary_files():
     assert not is_indexable_document(Path("~$需求文档.docx"))
     assert not is_indexable_document(Path("~$进度计划.xlsx"))
@@ -63,6 +83,26 @@ def test_vector_store_returns_most_similar_chunk(tmp_path: Path):
 
     assert hits[0]["content"] == "目标用户是产品经理"
     assert hits[0]["metadata"]["chunk_index"] == 0
+
+
+def test_vector_store_persists_parent_chunk_metadata(tmp_path: Path):
+    store = VectorStore(tmp_path / "vectors.sqlite3")
+    store.replace_document_chunks(
+        document_id="doc-1",
+        chunks=["child one", "child two"],
+        embeddings=[[1.0, 0.0], [0.0, 1.0]],
+        metadata={"title": "a.md", "source_path": "a.md", "file_type": ".md"},
+        chunk_metadatas=[
+            {"parent_index": 0, "parent_context": "parent child one child two"},
+            {"parent_index": 0, "parent_context": "parent child one child two"},
+        ],
+    )
+
+    hits = store.search([0.9, 0.1], limit=1)
+
+    assert hits[0]["metadata"]["chunk_index"] == 0
+    assert hits[0]["metadata"]["parent_index"] == 0
+    assert hits[0]["metadata"]["parent_context"] == "parent child one child two"
 
 
 def test_hash_embedding_scores_related_text_higher():

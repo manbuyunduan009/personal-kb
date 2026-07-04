@@ -16,7 +16,7 @@
 
 | 编号 | 方向 | 大白话解释 | 当前阶段做法 |
 | --- | --- | --- | --- |
-| 03 | Small-to-Big Retrieval | 用小块精准命中，再把更完整的大块交给 AI 作答。 | 先用“命中块 + 前后相邻片段”模拟大块上下文。 |
+| 03 | Small-to-Big Retrieval | 用小块精准命中，再把更完整的大块交给 AI 作答。 | 已做 v1：每 3 个 child chunk 组成一个 parent context，检索仍命中 child，回答时补 parent。 |
 | 04 | Context Enriched | 检索到一个片段时，补上标题、章节、前后文，让 AI 不只看到孤立句子。 | 给 chunk 存 `chunk_header`、上文、下文。 |
 | 05 | Chunk Header | 入库前给每个切片加标题或章节主旨，提高检索匹配率。 | 从 Markdown 标题、章节行、文件名中推断块级标题。 |
 | 06 | Document Augmentation | 为原文块补充高频潜在问题，让“问题匹配问题”更容易命中。 | 先用规则生成潜在问题，不额外调用模型。 |
@@ -27,6 +27,8 @@
 | 11 | Feedback Loop | 收集点赞、点踩、采用率，长期提升常用正确文档权重。 | 已做 v0：前端可反馈，后端存表，rerank 读取反馈分。 |
 | 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v2：低分时自动二次检索补救，并把补救过程返回前端。 |
 | 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v1：聊天接口写入 trace，前端展示最近诊断记录。 |
+| 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v1：统计检索通过率、问答通过率、拒答率、补救率、平均耗时和最近 trace 分布。 |
+| 15 | Citation Check | 检查答案里的结论是否能被引用来源支撑，减少有引用但乱答。 | 已做 v0 预研：独立规则模块，先测试不拦截主流程。 |
 
 ## 3. 模块状态和持续优化入口
 
@@ -37,7 +39,8 @@
 | 文档解析 | 已完成基础版 | 支持 `.md/.txt/.docx/.xlsx`，Word 读取段落和表格，Excel 读取 sheet 和行。 | `backend/app/parsers.py` | 增加 PDF、OCR、保留表格结构、识别标题层级。 |
 | Chunk Header | 已完成 v0 | 入库时从 Markdown 标题、章节行、文件名推断 `chunk_header`。 | `backend/app/chunking.py` | 改成按标题分段；对 Word/Excel 识别更准确的章节标题。 |
 | Document Augmentation | 已完成 v0 | 为每个 chunk 规则生成潜在问题，放进 embedding 文本，不伪装成原文展示。 | `backend/app/chunking.py`, `backend/app/indexer.py` | 用小模型生成更自然的问题；按业务类型生成不同问题模板。 |
-| Context Enriched | 已完成 v0 | chunk 元数据保存标题、上文窗口、下文窗口、摘要。 | `backend/app/chunking.py`, `backend/app/vector_store.py` | 增加 parent chunk；把同一章节的相邻块合并给 AI。 |
+| Context Enriched | 已完成 v1 | chunk 元数据保存标题、上文窗口、下文窗口、摘要；回答时优先使用 parent context。 | `backend/app/chunking.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按标题/语义构造 parent，而不是固定 3 个 child 一组。 |
+| Parent-Child Chunk | 已完成 v1 | 每 3 个 child chunk 生成一个 parent context；索引和引用仍落在 child；AI 回答上下文优先使用 parent。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按章节、标题、表格边界构造 parent；根据问题类型动态控制 parent 长度。 |
 | Field-aware Retrieval | 已完成 v1 | 从文档表格/键值行提取文档级属性，把“项目/所属/负责人/日期/域名/编号”等字段传播到每个 chunk，并参与 embedding、关键词召回、rerank 和 prompt。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 保留原始表格结构；给字段类型加权；把字段抽取规则配置化；支持更多业务字段。 |
 | Query Transformation | 已完成 v0 | 用户问题生成多个 query variant，多路检索后合并去重。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 改写问题；支持子问题拆解和多轮追问。 |
 | Hybrid Search | 已完成 v0 | 向量召回和关键词召回并行，合并候选后再 rerank。 | `backend/app/vector_store.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 换成 BM25/SQLite FTS；按字段加权；支持精确短语匹配。 |
@@ -47,6 +50,8 @@
 | Feedback Loop | 已完成 v0 | 前端对引用/检索结果点赞点踩；后端存 `feedback` 表；rerank 用反馈分小幅加权。 | `backend/app/db.py`, `backend/app/main.py`, `backend/app/retrieval.py`, `frontend/src/main.tsx` | 加反馈备注；按问题相似度加权；做“已反馈”状态；加入评测报表。 |
 | Self-RAG | 已完成 v2 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时生成补救 query、扩大召回再检索；补救后仍不足才拒答；前端展示 Self-RAG 检查状态。 | `backend/app/rag.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 接 LLM query rewrite；增加按问题类型的阈值；让模型做引用一致性检查；记录补救命中率。 |
 | RAG Trace | 已完成 v1 | 每次 `/api/chat` 写入 `rag_traces` 表，记录问题、答案预览、拒答状态、引用数量、引用标题、Self-RAG 状态、初始/最终分数、补救 query 和耗时；前端右侧展示最近诊断记录。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；统计命中率、拒答率、补救率和平均耗时；支持按问题搜索 trace。 |
+| Eval Report | 已完成 v1 | 新增脚本跑固定问题集，并输出 search/chat pass rate、拒答率、补救率、耗时和 trace 分布。 | `backend/scripts/eval_report.py`, `backend/tests/test_eval_report.py` | 输出 JSON 文件；做趋势对比；把 Citation Check 指标并入报告。 |
+| Citation Check | 已完成 v0 预研 | 新增独立规则模块，用答案 claim 和引用证据做词面支持度检查；当前只测试，不拦截答案。 | `backend/app/citation_check.py`, `backend/tests/test_citation_check.py` | 接入 trace；检查回答是否每个关键结论都有来源；低支持度时给前端显示风险提示。 |
 
 ## 4. 已完成模块的实现说明
 
@@ -278,6 +283,97 @@
 - 给 trace 做筛选：只看拒答、只看补救成功、只看无引用回答。
 - 生成评测报表：平均分、拒答率、补救率、平均耗时。
 - 把 trace 和用户反馈关联起来，分析“用户点踩的回答当时检索链路哪里出问题”。
+
+### 4.11 Parent-Child Chunk
+
+做法：
+
+1. 入库时仍然先切成 800 字左右的 child chunk，保证检索颗粒度足够细。
+2. 每 3 个连续 child chunk 组合成一个 parent context，最多保留 2600 字。
+3. 每个 child metadata 里保存 `parent_index` 和 `parent_context`。
+4. 检索、引用、反馈仍然指向具体 child chunk。
+5. AI 回答时优先使用 parent context，送给模型的上下文再压缩到约 1200 字。
+6. 索引版本升级为 `small-to-big-parent-child-v1`，所以需要重新点击“索引文档”或调用 `/api/index/run`。
+
+为什么这样做：
+
+- 小块适合“找”：问题通常只对应文档里一小段，child 越精准越容易命中。
+- 大块适合“答”：AI 如果只看到一句孤立片段，很容易丢前因后果，parent 可以补上下文。
+- 引用仍指向 child，是为了让用户知道答案到底从哪一小段来的。
+
+当前边界：
+
+- v1 是固定每 3 个 child 一组，不理解真实章节结构。
+- parent context 会重复存到多个 child metadata，索引体积会变大。
+- 上下文压缩仍是规则筛句，不是模型级压缩。
+
+后续你可以单独优化：
+
+- 按 Markdown 标题、Word 标题样式、Excel sheet/行块来构造 parent。
+- 不重复存 parent，而是单独建 parent 表，通过 `parent_id` 关联 child。
+- 按问题类型动态决定是用 child、parent，还是更大的 document window。
+
+### 4.12 Eval Report
+
+做法：
+
+1. 复用 `eval_retrieval.py` 里的固定检索问题和问答问题。
+2. 依次调用 `/api/search`、`/api/chat`、`/api/traces`。
+3. 输出检索通过率、问答通过率、拒答率、补救率、平均耗时和最近 trace 状态分布。
+4. 命令为：
+
+```powershell
+cd D:\vscode\动效\personal-kb\backend
+.\.venv\Scripts\python.exe scripts\eval_report.py
+```
+
+为什么这样做：
+
+- 工业版 RAG 不能只靠“我感觉这次更准了”。
+- 每次改 chunk、rerank、query rewrite、阈值，都要用同一批问题复测。
+- 报告指标能告诉你：是命中率变了，还是拒答率变了，还是耗时变高了。
+
+当前指标口径：
+
+- `search_pass_rate`：只检索时，期望文档是否出现在 top 结果里。
+- `chat_pass_rate`：AI 问答时，期望引用是否出现，或无依据问题是否正确拒答。
+- `refusal_rate`：成功问答里有多少次拒答。
+- `rescue_rate`：触发补救的问题里，有多少被补救成功。
+- `avg_latency_ms`：搜索和问答的平均耗时。
+
+后续你可以单独优化：
+
+- 输出 JSON 文件，保存每次评测快照。
+- 加趋势对比：本次 vs 上次。
+- 把 Citation Check 的 supported/warning/unsupported 统计并入报告。
+
+### 4.13 Citation Check
+
+做法：
+
+1. 新增 `check_citation_support(answer, citations)` 独立函数。
+2. 先把答案拆成可检查 claim。
+3. 再从引用里收集标题、摘要、上下文、字段事实等证据文本。
+4. 用中文 2/3 字 ngram、英文词、数字一致性做支持度评分。
+5. 返回 `supported`、`warning`、`unsupported` 三类状态。
+
+为什么这样做：
+
+- RAG 最危险的问题不是“没有引用”，而是“看起来有引用，但答案结论不是引用里说的”。
+- v0 先做规则检查，成本低、可测试、可解释。
+- 当前阶段只预研，不拦截主流程，避免误伤正常回答。
+
+当前边界：
+
+- 它是词面检查，不理解复杂推理、否定关系和多跳事实。
+- 如果引用只返回摘要，不返回完整上下文，检查会偏保守。
+- 不应该把它当最终裁判，现阶段更适合作为 trace 风险信号。
+
+后续你可以单独优化：
+
+- 接入 `/api/chat` 的 trace，记录每次回答的 citation support 状态。
+- 对低支持度答案在前端显示“引用支撑不足”提示。
+- 后续再用 LLM 做 claim-by-claim 检查，但要保留规则版作为低成本底线。
 
 ## 5. 目标
 

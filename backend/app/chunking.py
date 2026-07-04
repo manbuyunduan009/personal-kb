@@ -22,6 +22,8 @@ DOCUMENT_ATTRIBUTE_MARKERS = [
 OWNERSHIP_ATTRIBUTE_MARKERS = ["项目", "所属", "游戏", "产品", "部门"]
 PERSON_ATTRIBUTE_MARKERS = ["对接人", "负责人", "联系人"]
 TIME_ATTRIBUTE_MARKERS = ["日期", "时间", "排期", "完成"]
+DEFAULT_PARENT_CHILD_COUNT = 3
+DEFAULT_PARENT_CONTEXT_MAX_CHARS = 2600
 
 
 def split_text(text: str, chunk_size: int = 800, overlap: int = 120) -> List[str]:
@@ -55,12 +57,25 @@ def build_chunk_records(
     text: str,
     chunk_size: int = 800,
     overlap: int = 120,
+    parent_child_count: int = DEFAULT_PARENT_CHILD_COUNT,
+    parent_context_max_chars: int = DEFAULT_PARENT_CONTEXT_MAX_CHARS,
 ) -> List[Dict[str, object]]:
     """Build enriched chunk records for indexing and answer context."""
+    if parent_child_count <= 0:
+        raise ValueError("parent_child_count must be greater than 0")
+    if parent_context_max_chars <= 0:
+        raise ValueError("parent_context_max_chars must be greater than 0")
+
     chunks = split_text(text, chunk_size=chunk_size, overlap=overlap)
     document_facts = extract_field_facts(text, scope="document")
+    parent_contexts = build_parent_contexts(
+        chunks,
+        parent_child_count=parent_child_count,
+        max_chars=parent_context_max_chars,
+    )
     records = []
     for index, chunk in enumerate(chunks):
+        parent_index = index // parent_child_count
         header = infer_chunk_header(document_title, chunk)
         chunk_facts = extract_field_facts(chunk, scope="chunk")
         field_facts = merge_field_facts(document_facts, chunk_facts)
@@ -89,11 +104,29 @@ def build_chunk_records(
                 "generated_questions": generated_questions,
                 "previous_context": previous_context,
                 "next_context": next_context,
+                "parent_index": parent_index,
+                "parent_context": parent_contexts.get(parent_index, ""),
                 "embedding_text": embedding_text,
                 "context_summary": summarize_text(chunk),
             }
         )
     return records
+
+
+def build_parent_contexts(
+    chunks: List[str],
+    parent_child_count: int,
+    max_chars: int,
+) -> Dict[int, str]:
+    contexts = {}
+    for parent_index, start in enumerate(range(0, len(chunks), parent_child_count)):
+        end = min(start + parent_child_count, len(chunks))
+        parts = [
+            "子片段 %s：\n%s" % (chunk_index, chunks[chunk_index])
+            for chunk_index in range(start, end)
+        ]
+        contexts[parent_index] = limit_text("\n\n".join(parts), max_chars)
+    return contexts
 
 
 def infer_chunk_header(document_title: str, chunk: str) -> str:
@@ -240,6 +273,15 @@ def has_field_label(field_facts: List[Dict[str, str]], markers: List[str]) -> bo
 
 def format_field_facts(field_facts: List[Dict[str, str]]) -> str:
     return "；".join("%s: %s" % (fact["label"], fact["value"]) for fact in field_facts)
+
+
+def limit_text(text: str, max_chars: int) -> str:
+    compact = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(compact) <= max_chars:
+        return compact
+    if max_chars <= 3:
+        return compact[:max_chars]
+    return compact[: max_chars - 3].rstrip() + "..."
 
 
 def summarize_text(text: str, limit: int = 220) -> str:

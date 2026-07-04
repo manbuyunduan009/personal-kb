@@ -42,6 +42,8 @@ FIELD_EVIDENCE_GROUPS = [
     (["域名", "网址", "链接"], ["域名", "网址", "链接"]),
     (["编号", "单号", "worktile"], ["编号", "单号", "worktile"]),
 ]
+CHILD_CONTEXT_MAX_CHARS = 900
+PARENT_CONTEXT_MAX_CHARS = 1200
 
 
 class RagService:
@@ -341,9 +343,17 @@ class RagService:
         field_facts = metadata.get("field_facts", []) or []
         if field_facts:
             parts.append("文档属性：%s" % format_field_facts(field_facts))
+        parent_context = str(metadata.get("parent_context") or "").strip()
+        if parent_context:
+            metadata["parent_context_used"] = True
+            parts.append("父级上下文：%s" % parent_context)
+            parts.append("命中子片段：%s" % hit.get("content", ""))
+            return compress_context(question, "\n".join(parts), max_chars=PARENT_CONTEXT_MAX_CHARS)
+
+        metadata["parent_context_used"] = False
         if metadata.get("previous_context"):
             parts.append("上文窗口：%s" % metadata["previous_context"])
         parts.append("命中片段：%s" % hit["content"])
         if metadata.get("next_context"):
             parts.append("下文窗口：%s" % metadata["next_context"])
-        return compress_context(question, "\n".join(parts), max_chars=900)
+        return compress_context(question, "\n".join(parts), max_chars=CHILD_CONTEXT_MAX_CHARS)

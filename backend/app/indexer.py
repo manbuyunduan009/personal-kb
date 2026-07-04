@@ -11,7 +11,7 @@ from .parsers import SUPPORTED_EXTENSIONS, parse_document
 from .vector_store import VectorStore
 
 
-INDEX_SCHEMA_VERSION = "rag-optimization-v3"
+INDEX_SCHEMA_VERSION = "small-to-big-parent-child-v1"
 
 
 def file_hash(path: Path) -> str:
@@ -92,6 +92,8 @@ class Indexer:
                             "generated_questions": record["generated_questions"],
                             "previous_context": record["previous_context"],
                             "next_context": record["next_context"],
+                            "parent_index": record["parent_index"],
+                            "parent_context": record["parent_context"],
                             "context_summary": record["context_summary"],
                         }
                         for record in chunk_records

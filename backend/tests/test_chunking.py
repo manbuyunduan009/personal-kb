@@ -45,6 +45,26 @@ def test_build_chunk_records_propagates_document_fields_to_chunks():
         assert "文档属性" in record["embedding_text"]
 
 
+def test_build_chunk_records_adds_bounded_parent_context_groups():
+    text = ("A" * 10) + ("B" * 10) + ("C" * 10) + ("D" * 10) + ("E" * 10)
+
+    records = build_chunk_records(
+        "parent.md",
+        text,
+        chunk_size=10,
+        overlap=0,
+        parent_child_count=3,
+        parent_context_max_chars=80,
+    )
+
+    assert [record["parent_index"] for record in records] == [0, 0, 0, 1, 1]
+    assert "AAAAAAAAAA" in records[1]["parent_context"]
+    assert "CCCCCCCCCC" in records[1]["parent_context"]
+    assert "DDDDDDDDDD" not in records[1]["parent_context"]
+    assert "DDDDDDDDDD" in records[3]["parent_context"]
+    assert len(records[0]["parent_context"]) <= 80
+
+
 def test_extract_field_facts_ignores_sentence_like_labels():
     text = "提交后校验订单号和身份证信息是否匹配后台有效订单：校验失败需 toast 提示具体原因。"
 

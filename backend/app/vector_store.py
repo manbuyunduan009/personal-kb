@@ -52,7 +52,7 @@ class VectorStore:
         document_id: str,
         chunks: List[str],
         embeddings: List[List[float]],
-        metadata: Dict[str, str],
+        metadata: Dict[str, object],
         chunk_metadatas: Optional[List[Dict[str, object]]] = None,
     ) -> None:
         with self.connect() as connection:

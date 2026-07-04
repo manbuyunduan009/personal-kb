@@ -43,6 +43,50 @@ def make_hit(score, content="目标用户是专题产品经理", metadata=None, 
     }
 
 
+def test_context_from_hit_prefers_parent_context_and_keeps_child_citation():
+    hit = make_hit(
+        0.8,
+        content="target child answer",
+        metadata={
+            "chunk_index": 7,
+            "parent_index": 2,
+            "parent_context": "parent intro target sibling details",
+            "previous_context": "old previous target",
+            "next_context": "old next target",
+        },
+        hit_id="doc-1:7",
+    )
+
+    context = RagService._context_from_hit("target", hit)
+    citation = RagService._citation_from_hit(hit)
+
+    assert "parent intro target sibling details" in context
+    assert "target child answer" in context
+    assert "old previous target" not in context
+    assert "old next target" not in context
+    assert citation["chunk_index"] == 7
+    assert "parent_index" not in citation
+    assert hit["metadata"]["parent_context_used"] is True
+
+
+def test_context_from_hit_falls_back_to_child_windows_for_old_metadata():
+    hit = make_hit(
+        0.8,
+        content="target child answer",
+        metadata={
+            "previous_context": "old previous target",
+            "next_context": "old next target",
+        },
+    )
+
+    context = RagService._context_from_hit("target", hit)
+
+    assert "old previous target" in context
+    assert "target child answer" in context
+    assert "old next target" in context
+    assert hit["metadata"]["parent_context_used"] is False
+
+
 def test_answer_stops_when_evidence_score_is_too_low():
     service = RagService(
         embeddings=FakeEmbeddings(),

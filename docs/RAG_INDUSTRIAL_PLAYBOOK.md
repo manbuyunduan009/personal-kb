@@ -635,3 +635,109 @@ LLM Query Rewrite + Self-RAG 阈值大改
 - Citation Check 负责回答安全。
 
 它们能并行，是因为目标不同、文件冲突较少、互相能形成验证闭环。
+
+## 11. 并行开发记录
+
+### 11.1 2026-07-04 并行批次：Small-to-Big / Eval Report / Citation Check
+
+本批次目标：
+
+```text
+主线：Parent-Child Chunk，让 Small-to-Big 从模拟版升级到真正父子块结构。
+评测线：Eval Report，把命中率、拒答率、补救率、耗时沉淀成报告。
+安全线：Citation Check v0，预研答案和引用是否互相支撑。
+```
+
+并行分工：
+
+| 子任务 | 负责范围 | 允许修改 | 禁止修改 | 预期交付 |
+| --- | --- | --- | --- | --- |
+| Parent-Child Chunk | 后端检索底座 | `chunking.py`, `indexer.py`, `vector_store.py`, `rag.py`, 后端相关测试 | `frontend/**`, `docs/**`, `main.py`, `db.py`, 评测脚本 | child 检索、parent 回答、引用仍指向 child |
+| Eval Report | 评测报告 | `backend/scripts/eval_report.py`, 少量评测测试 | 核心 RAG 链路、前端、文档 | 命中率、问答通过率、拒答率、补救率、平均耗时 |
+| Citation Check v0 | 引用安全预研 | `backend/app/citation_check.py`, `backend/tests/test_citation_check.py` | 主 RAG 链路、前端、文档 | 独立规则检查，先不拦截答案 |
+
+为什么这样分：
+
+- Parent-Child 会改核心检索底座，所以本批次只允许它碰核心链路。
+- Eval Report 读取 API 和 trace，不影响主流程，最适合并行。
+- Citation Check 先做独立模块，不接主链路，避免和 Parent-Child 同时改 `rag.py`。
+
+本批次合并规则：
+
+1. 主控统一合并。
+2. 每个子任务必须有测试结果。
+3. 合并后跑后端全量测试。
+4. 如果改了前端，跑前端 build。
+5. 跑 `eval_retrieval.py` 保证已有评测不下降。
+6. 最终补齐本节的实现结果、优劣和后续建议。
+
+实现结果：
+
+- Parent-Child Chunk 已合入主链路。
+  - `build_chunk_records` 仍然生成 child chunk，但同时为每个 child 写入 `parent_index` 和 `parent_context`。
+  - 默认规则是每 3 个 child chunk 组成一个 parent context。
+  - parent context 入库时最多 2600 字，回答时再压缩到 1200 字左右。
+  - 检索、引用、反馈仍然落在 child chunk 上，避免引用变得太粗。
+  - `INDEX_SCHEMA_VERSION` 升级为 `small-to-big-parent-child-v1`，所以旧索引会被自动判定为需要重建。
+- Eval Report 已新增为独立脚本。
+  - `backend/scripts/eval_report.py` 调用 `/api/search`、`/api/chat`、`/api/traces`。
+  - 输出 `search_pass_rate`、`chat_pass_rate`、`refusal_rate`、`rescue_rate`、`avg_latency_ms`、`api_failure_count`。
+  - 同时读取最近 trace，统计 Self-RAG 状态分布、最近拒答率、最近补救率和最近平均耗时。
+- Citation Check v0 已完成预研模块。
+  - `backend/app/citation_check.py` 提供 `check_citation_support(answer, citations)`。
+  - 规则是：拆答案 claim，收集引用证据文本，做中英文 token/数字一致性检查。
+  - 返回 `supported`、`warning`、`unsupported`。
+  - 当前不接入 `/api/chat` 拦截答案，只作为后续安全模块的地基。
+
+大白话理解：
+
+- Parent-Child 解决的是“找到一句话，但回答需要看上下文”的问题。
+- Eval Report 解决的是“别靠感觉判断优化有没有用”的问题。
+- Citation Check 解决的是“答案虽然带来源，但来源是否真的支撑答案”的问题。
+
+好处：
+
+- Parent-Child 让 AI 回答时看到更完整的相邻资料，尤其适合 PRD 和 Excel 这种上下文连续的文档。
+- Eval Report 让每次改动都有数字验收，可以观察命中率、拒答率、补救率和耗时。
+- Citation Check 先用低成本规则证明方向，后续可以接 trace 或前端风险提示。
+
+缺点和边界：
+
+- Parent-Child v1 只是固定 3 个 child 一组，还没有按真实章节、标题或表格结构分 parent。
+- parent context 重复存进每个 child metadata，索引体积会增加。
+- Eval Report 当前只做单次报告，还没有保存历史趋势。
+- Citation Check v0 是词面支持度检查，不理解复杂推理和否定关系。
+
+验证结果：
+
+- 后端全量测试：`41 passed`。
+- 前端构建：`npm run build` 通过。
+- 重新索引：4 个文档全部刷新，向量库元数据确认包含：
+  - `index_version = small-to-big-parent-child-v1`
+  - `parent_index`
+  - `parent_context`
+- 固定评测：`eval_retrieval.py` 结果 `10/10 passed`。
+- 新评测报告：`eval_report.py` 输出：
+  - `search_pass_rate: 100.0% (6/6)`
+  - `chat_pass_rate: 100.0% (4/4)`
+  - `refusal_rate: 25.0% (1/4)`
+  - `rescue_rate: 0.0% (0/1)`
+  - `avg_latency_ms: 4278`
+  - `api_failure_count: 0`
+  - 最近 20 条 trace：`sufficient=16`，`insufficient_after_rescue=4`
+
+后续建议：
+
+- 第二批并行开发建议：
+  - 主线 A：SQLite FTS/BM25，把当前轻量关键词扫描升级成工业级混合检索。
+  - 主线 B：LLM Query Rewrite，让低分补救时不只靠规则改写，而是生成更可靠的检索问题。
+  - 安全线 C：把 Citation Check 接入 trace，先记录风险，不直接拦截答案。
+- Parent-Child 下一步建议：
+  - 从固定 3 个 child 一组，升级为按标题/章节/表格边界生成 parent。
+  - 给 parent 单独建表或单独 metadata，减少重复存储。
+- Eval Report 下一步建议：
+  - 支持 `--json` 输出保存到 `backend/reports/`。
+  - 增加本次与上次指标对比，观察优化是否退步。
+- Citation Check 下一步建议：
+  - 把 `citation_check.status`、`support_score` 写进 `rag_traces`。
+  - 前端先显示“引用支撑风险”，不要马上阻断用户。
