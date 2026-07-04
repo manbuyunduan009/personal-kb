@@ -20,8 +20,10 @@ import {
   DocumentItem,
   getDocuments,
   getHealth,
+  getTraces,
   Health,
   IndexResult,
+  RagTrace,
   runIndex,
   search,
   SearchHit,
@@ -47,6 +49,7 @@ function App() {
   const [answer, setAnswer] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
   const [results, setResults] = useState<SearchHit[]>([]);
+  const [traces, setTraces] = useState<RagTrace[]>([]);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [loading, setLoading] = useState<"index" | "search" | "chat" | "boot" | "">("boot");
   const [error, setError] = useState("");
@@ -61,9 +64,10 @@ function App() {
   );
 
   async function refresh() {
-    const [healthData, documentData] = await Promise.all([getHealth(), getDocuments()]);
+    const [healthData, documentData, traceData] = await Promise.all([getHealth(), getDocuments(), getTraces()]);
     setHealth(healthData);
     setDocuments(documentData.documents);
+    setTraces(traceData.traces);
     if (!selectedId && documentData.documents[0]) {
       setSelectedId(documentData.documents[0].id);
     }
@@ -115,7 +119,9 @@ function App() {
       setCitations(data.citations);
       setSelfRag(data.self_rag);
       const searchData = await search(question);
+      const traceData = await getTraces();
       setResults(searchData.results);
+      setTraces(traceData.traces);
       setLastSearchQuery(question);
     } catch (err) {
       setError((err as Error).message);
@@ -356,6 +362,26 @@ function App() {
               <pre>{selectedDocument.content_preview}</pre>
             </section>
           )}
+
+          <section className="trace-panel">
+            <h3>RAG 诊断</h3>
+            {traces.length === 0 && <p className="empty">还没有问答诊断记录。</p>}
+            {traces.map((trace) => (
+              <article className={trace.is_refusal ? "trace-item warning" : "trace-item"} key={trace.id}>
+                <header>
+                  <b>{selfRagStatusLabel(trace.self_rag_status)}</b>
+                  <span>{trace.latency_ms}ms</span>
+                </header>
+                <p>{trace.question}</p>
+                <small>
+                  初始 {trace.initial_best_score.toFixed(2)} · 最终 {trace.final_best_score.toFixed(2)}
+                  {trace.rescue_attempted ? ` · 补救${trace.rescued ? "成功" : "未命中"}` : " · 未补救"}
+                  {` · 引用 ${trace.citation_count}`}
+                </small>
+                {trace.cited_titles.length > 0 && <small>{trace.cited_titles.join(" / ")}</small>}
+              </article>
+            ))}
+          </section>
         </aside>
       </section>
     </main>
@@ -368,10 +394,11 @@ function retrievalModeLabel(mode: string) {
   return "向量";
 }
 
-function selfRagStatusLabel(status: SelfRagStatus["status"]) {
+function selfRagStatusLabel(status: SelfRagStatus["status"] | "unknown" | string) {
   if (status === "rescued") return "二次检索后通过";
   if (status === "insufficient_after_rescue") return "补救后仍不足";
   if (status === "insufficient") return "证据不足";
+  if (status === "unknown") return "未记录";
   return "证据充足";
 }
 

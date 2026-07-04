@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import uuid
 from contextlib import contextmanager
@@ -35,6 +36,28 @@ ON feedback(source_path, chunk_index);
 
 CREATE INDEX IF NOT EXISTS idx_feedback_question
 ON feedback(question);
+
+CREATE TABLE IF NOT EXISTS rag_traces (
+    id TEXT PRIMARY KEY,
+    question TEXT NOT NULL,
+    answer_preview TEXT NOT NULL,
+    is_refusal INTEGER NOT NULL,
+    citation_count INTEGER NOT NULL,
+    cited_titles TEXT NOT NULL,
+    self_rag_status TEXT NOT NULL,
+    rescue_attempted INTEGER NOT NULL,
+    rescued INTEGER NOT NULL,
+    initial_best_score REAL NOT NULL,
+    final_best_score REAL NOT NULL,
+    min_evidence_score REAL NOT NULL,
+    evidence_count INTEGER NOT NULL,
+    rescue_queries TEXT NOT NULL,
+    latency_ms INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_traces_created_at
+ON rag_traces(created_at DESC);
 """
 
 
@@ -180,3 +203,80 @@ class DocumentRepository:
         for row in self.feedback_summary():
             scores[(str(row["source_path"]), int(row["chunk_index"]))] = float(row["feedback_score"])
         return scores
+
+    def add_rag_trace(self, question: str, result: Dict[str, object], latency_ms: int) -> Dict[str, object]:
+        self_rag = result.get("self_rag", {}) if isinstance(result.get("self_rag", {}), dict) else {}
+        citations = result.get("citations", []) if isinstance(result.get("citations", []), list) else []
+        answer = str(result.get("answer", ""))
+        cited_titles = []
+        for citation in citations:
+            if isinstance(citation, dict):
+                title = str(citation.get("title", ""))
+                if title and title not in cited_titles:
+                    cited_titles.append(title)
+
+        status = str(self_rag.get("status", "unknown"))
+        trace = {
+            "id": str(uuid.uuid4()),
+            "question": question.strip(),
+            "answer_preview": answer[:240],
+            "is_refusal": int(status.startswith("insufficient") or ("文档中没有找到依据" in answer and not citations)),
+            "citation_count": len(citations),
+            "cited_titles": json.dumps(cited_titles, ensure_ascii=False),
+            "self_rag_status": status,
+            "rescue_attempted": int(bool(self_rag.get("rescue_attempted", False))),
+            "rescued": int(bool(self_rag.get("rescued", False))),
+            "initial_best_score": float(self_rag.get("initial_best_score", 0.0)),
+            "final_best_score": float(self_rag.get("final_best_score", 0.0)),
+            "min_evidence_score": float(self_rag.get("min_evidence_score", 0.0)),
+            "evidence_count": int(self_rag.get("evidence_count", 0)),
+            "rescue_queries": json.dumps(self_rag.get("rescue_queries", []), ensure_ascii=False),
+            "latency_ms": latency_ms,
+            "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        }
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO rag_traces (
+                    id, question, answer_preview, is_refusal, citation_count,
+                    cited_titles, self_rag_status, rescue_attempted, rescued,
+                    initial_best_score, final_best_score, min_evidence_score,
+                    evidence_count, rescue_queries, latency_ms, created_at
+                )
+                VALUES (
+                    :id, :question, :answer_preview, :is_refusal, :citation_count,
+                    :cited_titles, :self_rag_status, :rescue_attempted, :rescued,
+                    :initial_best_score, :final_best_score, :min_evidence_score,
+                    :evidence_count, :rescue_queries, :latency_ms, :created_at
+                )
+                """,
+                trace,
+            )
+        return self._decode_trace(trace)
+
+    def list_rag_traces(self, limit: int = 20) -> List[Dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id, question, answer_preview, is_refusal, citation_count,
+                    cited_titles, self_rag_status, rescue_attempted, rescued,
+                    initial_best_score, final_best_score, min_evidence_score,
+                    evidence_count, rescue_queries, latency_ms, created_at
+                FROM rag_traces
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._decode_trace(dict(row)) for row in rows]
+
+    @staticmethod
+    def _decode_trace(trace: Dict[str, object]) -> Dict[str, object]:
+        decoded = dict(trace)
+        decoded["is_refusal"] = bool(decoded.get("is_refusal"))
+        decoded["rescue_attempted"] = bool(decoded.get("rescue_attempted"))
+        decoded["rescued"] = bool(decoded.get("rescued"))
+        decoded["cited_titles"] = json.loads(str(decoded.get("cited_titles") or "[]"))
+        decoded["rescue_queries"] = json.loads(str(decoded.get("rescue_queries") or "[]"))
+        return decoded

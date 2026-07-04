@@ -70,6 +70,25 @@ export type SelfRagStatus = {
   evidence_count: number;
 };
 
+export type RagTrace = {
+  id: string;
+  question: string;
+  answer_preview: string;
+  is_refusal: boolean;
+  citation_count: number;
+  cited_titles: string[];
+  self_rag_status: SelfRagStatus["status"] | "unknown";
+  rescue_attempted: boolean;
+  rescued: boolean;
+  initial_best_score: number;
+  final_best_score: number;
+  min_evidence_score: number;
+  evidence_count: number;
+  rescue_queries: string[];
+  latency_ms: number;
+  created_at: string;
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -101,6 +120,10 @@ export function getDocuments() {
   return request<{ documents: DocumentItem[] }>("/api/documents");
 }
 
+export function getTraces(limit = 12) {
+  return request<{ traces: RagTrace[] }>(`/api/traces?limit=${limit}`);
+}
+
 export function search(query: string, limit = 5) {
   return request<{ results: SearchHit[] }>("/api/search", {
     method: "POST",
@@ -109,7 +132,7 @@ export function search(query: string, limit = 5) {
 }
 
 export function chat(question: string) {
-  return request<{ answer: string; citations: Citation[]; self_rag: SelfRagStatus }>("/api/chat", {
+  return request<{ answer: string; citations: Citation[]; self_rag: SelfRagStatus; trace_id?: string }>("/api/chat", {
     method: "POST",
     body: JSON.stringify({ question })
   });

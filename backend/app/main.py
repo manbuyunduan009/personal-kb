@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException
+import time
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
@@ -126,7 +128,12 @@ def chat(request: ChatRequest):
         feedback_scores=repository.feedback_scores(),
         min_evidence_score=settings.min_evidence_score,
     )
-    return rag.answer(request.question)
+    start = time.perf_counter()
+    result = rag.answer(request.question)
+    latency_ms = int((time.perf_counter() - start) * 1000)
+    trace = repository.add_rag_trace(request.question, result, latency_ms)
+    result["trace_id"] = trace["id"]
+    return result
 
 
 @app.post("/api/feedback")
@@ -147,3 +154,9 @@ def create_feedback(request: FeedbackRequest):
 def feedback_summary():
     _, repository = repository_service()
     return {"summary": repository.feedback_summary()}
+
+
+@app.get("/api/traces")
+def list_rag_traces(limit: int = Query(default=20, ge=1, le=100)):
+    _, repository = repository_service()
+    return {"traces": repository.list_rag_traces(limit=limit)}

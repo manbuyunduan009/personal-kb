@@ -247,6 +247,7 @@ h3 {
 .self-rag,
 .citations,
 .preview,
+.trace-panel,
 .hit {
   margin-top: 16px;
   padding: 14px;
@@ -342,6 +343,48 @@ h3 {
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.trace-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.trace-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.22);
+  background: #f8f5ec;
+}
+
+.trace-item.warning {
+  background: #f4d5cd;
+}
+
+.trace-item header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trace-item header b {
+  font-size: 12px;
+}
+
+.trace-item header span,
+.trace-item small {
+  color: #6b665d;
+  font-size: 12px;
+}
+
+.trace-item p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #383832;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .hit header {

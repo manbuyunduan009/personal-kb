@@ -24,6 +24,7 @@
 | 10 | Context Compression | 检索结果太长时，先压缩再喂给大模型，减少噪声和 token 浪费。 | 根据问题关键词挑选相关句子，限制每条上下文长度。 |
 | 11 | Feedback Loop | 收集点赞、点踩、采用率，长期提升常用正确文档权重。 | 已做 v0：前端可反馈，后端存表，rerank 读取反馈分。 |
 | 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v2：低分时自动二次检索补救，并把补救过程返回前端。 |
+| 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v1：聊天接口写入 trace，前端展示最近诊断记录。 |
 
 ## 3. 模块状态和持续优化入口
 
@@ -43,6 +44,7 @@
 | Context Compression | 已完成 v0 | 超长上下文按问题关键词挑相关句子，并限制长度。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 压缩；保留表格行标题；按引用来源分别压缩。 |
 | Feedback Loop | 已完成 v0 | 前端对引用/检索结果点赞点踩；后端存 `feedback` 表；rerank 用反馈分小幅加权。 | `backend/app/db.py`, `backend/app/main.py`, `backend/app/retrieval.py`, `frontend/src/main.tsx` | 加反馈备注；按问题相似度加权；做“已反馈”状态；加入评测报表。 |
 | Self-RAG | 已完成 v2 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时生成补救 query、扩大召回再检索；补救后仍不足才拒答；前端展示 Self-RAG 检查状态。 | `backend/app/rag.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 接 LLM query rewrite；增加按问题类型的阈值；让模型做引用一致性检查；记录补救命中率。 |
+| RAG Trace | 已完成 v1 | 每次 `/api/chat` 写入 `rag_traces` 表，记录问题、答案预览、拒答状态、引用数量、引用标题、Self-RAG 状态、初始/最终分数、补救 query 和耗时；前端右侧展示最近诊断记录。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；统计命中率、拒答率、补救率和平均耗时；支持按问题搜索 trace。 |
 
 ## 4. 已完成模块的实现说明
 
@@ -243,6 +245,37 @@
 - 通用能力缺口：字段和正文没有建立关系，导致字段类问题只能靠文本相似度碰运气。
 - 解决方案：做 Field-aware Retrieval，把文档级字段提取出来传播到每个 chunk，并让字段类问题可以使用字段证据参与 Self-RAG 判断。
 - 验证用例：加入“周年庆是哪个游戏的？”评测，要求命中并引用 `【需求管理】《剑网3》十七周年庆线下活动小程序.docx`。
+
+### 4.10 RAG Trace 观测系统
+
+做法：
+
+1. 后端新增 `rag_traces` 表，记录每次问答运行的诊断信息。
+2. `/api/chat` 在生成答案后写入 trace，并把 `trace_id` 返回给前端。
+3. 新增 `GET /api/traces`，用于查看最近的问答诊断记录。
+4. 前端右侧新增“RAG 诊断”面板，展示最近问题、Self-RAG 状态、初始最高分、最终最高分、是否补救、引用数量和耗时。
+
+为什么这样做：
+
+- 工业版 RAG 的第一件事不是换更大的模型，而是先看清楚链路。
+- 只看最终答案很容易误判：回答错可能是解析错、切片错、召回漏、排序错、阈值过高，也可能是生成阶段幻觉。
+- Trace 相当于 RAG 的运行日志。每一次问题都留下证据，后续优化 BM25、Parent Chunk、Query Rewrite、Rerank 时才能比较前后效果。
+
+底层逻辑：
+
+- `initial_best_score` 看第一次检索质量。
+- `final_best_score` 看补救后是否变好。
+- `rescue_attempted` 和 `rescued` 看 Self-RAG 补救是否真的有用。
+- `citation_count` 和 `cited_titles` 看答案是否有来源支撑。
+- `is_refusal` 看系统是不是因为证据不足而拒答。
+- `latency_ms` 看优化是否带来了明显耗时。
+
+后续你可以单独优化：
+
+- 记录 topK 候选片段和每个候选的分数拆解。
+- 给 trace 做筛选：只看拒答、只看补救成功、只看无引用回答。
+- 生成评测报表：平均分、拒答率、补救率、平均耗时。
+- 把 trace 和用户反馈关联起来，分析“用户点踩的回答当时检索链路哪里出问题”。
 
 ## 5. 目标
 
