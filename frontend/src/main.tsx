@@ -303,8 +303,10 @@ function App() {
                 </small>
                 {(hit.matched_query || hit.keyword_score !== undefined) && (
                   <small>
-                    {hit.matched_query ? `匹配问题：${hit.matched_query}` : ""}
+                    {hit.retrieval_mode ? `召回：${retrievalModeLabel(hit.retrieval_mode)}` : ""}
+                    {hit.matched_query ? ` · 匹配问题：${hit.matched_query}` : ""}
                     {hit.keyword_score !== undefined ? ` · 关键词分 ${hit.keyword_score.toFixed(2)}` : ""}
+                    {hit.keyword_recall_score ? ` · 关键词召回 ${hit.keyword_recall_score.toFixed(2)}` : ""}
                     {hit.feedback_score ? ` · 反馈分 ${hit.feedback_score}` : ""}
                   </small>
                 )}
@@ -331,6 +333,12 @@ function App() {
       </section>
     </main>
   );
+}
+
+function retrievalModeLabel(mode: string) {
+  if (mode === "hybrid") return "混合";
+  if (mode === "keyword") return "关键词";
+  return "向量";
 }
 
 function FeedbackActions({

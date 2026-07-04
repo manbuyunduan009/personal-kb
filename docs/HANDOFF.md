@@ -127,6 +127,7 @@ docs/RAG_OPTIMIZATION_PLAN.md
 - Chunk Header：给每个切片增加块级标题。
 - Document Augmentation：给切片生成潜在问题，用于提升匹配率。
 - Query Transformation：把用户问题扩展成多个检索问题。
+- Hybrid Search v0：向量召回和关键词召回并行，合并候选后再重排。
 - Rerank v0：用向量分和关键词重合度做轻量重排。
 - Sentence Window / Context Compression v0：回答时补前后文，并控制上下文长度。
 - Feedback Loop v0：引用和检索片段支持“有帮助 / 没帮助”，反馈会存入 SQLite 并小幅影响后续排序。

@@ -40,8 +40,11 @@ export type SearchHit = {
   score: number;
   vector_score?: number;
   keyword_score?: number;
+  keyword_recall_score?: number;
+  hybrid_bonus?: number;
   feedback_score?: number;
   feedback_bonus?: number;
+  retrieval_mode?: "vector" | "keyword" | "hybrid";
   matched_query?: string;
 };
 

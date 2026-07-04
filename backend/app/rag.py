@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from openai import OpenAI, OpenAIError
 
 from .embeddings import EmbeddingProvider
-from .retrieval import compress_context, query_variants, rerank_hits
+from .retrieval import compress_context, keyword_recall_hits, query_variants, rerank_hits
 from .vector_store import VectorStore
 
 
@@ -51,8 +51,31 @@ class RagService:
                 existing = merged.get(key)
                 if existing is None or hit.get("score", 0.0) > existing.get("score", 0.0):
                     item = dict(hit)
+                    item["vector_recall_score"] = hit.get("score", 0.0)
+                    item["retrieval_mode"] = "vector"
                     item["matched_query"] = variant
                     merged[key] = item
+                elif existing is not None:
+                    existing["vector_recall_score"] = max(
+                        float(existing.get("vector_recall_score", 0.0)),
+                        float(hit.get("score", 0.0)),
+                    )
+
+        for hit in keyword_recall_hits(query, self.vector_store.list_chunks(), limit=expanded_limit):
+            key = str(hit.get("id") or "%s:%s" % (
+                hit["metadata"].get("document_id", ""),
+                hit["metadata"].get("chunk_index", ""),
+            ))
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = hit
+                continue
+
+            existing["keyword_recall_score"] = max(
+                float(existing.get("keyword_recall_score", 0.0)),
+                float(hit.get("keyword_recall_score", 0.0)),
+            )
+            existing["retrieval_mode"] = "hybrid"
 
         return rerank_hits(query, list(merged.values()), limit=limit, feedback_scores=self.feedback_scores)
 

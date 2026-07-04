@@ -1,4 +1,4 @@
-from app.retrieval import query_variants, rerank_hits
+from app.retrieval import keyword_recall_hits, query_variants, rerank_hits
 
 
 def test_query_variants_expand_requirement_question():
@@ -51,3 +51,24 @@ def test_rerank_uses_feedback_score_as_small_bonus():
 
     assert results[0]["metadata"]["title"] == "b.docx"
     assert results[0]["feedback_bonus"] > 0
+
+
+def test_keyword_recall_hits_can_find_exact_terms():
+    chunks = [
+        {
+            "id": "doc-1:0",
+            "content": "普通部署说明",
+            "metadata": {"title": "部署.md", "chunk_index": 0},
+        },
+        {
+            "id": "doc-2:0",
+            "content": "猫眼订单绑定和接驳车预约规则",
+            "metadata": {"title": "周年庆.docx", "chunk_index": 0},
+        },
+    ]
+
+    hits = keyword_recall_hits("猫眼订单怎么绑定？", chunks, limit=1)
+
+    assert hits[0]["id"] == "doc-2:0"
+    assert hits[0]["retrieval_mode"] == "keyword"
+    assert hits[0]["keyword_recall_score"] > 0

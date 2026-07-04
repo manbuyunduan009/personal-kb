@@ -101,6 +101,21 @@ class VectorStore:
         hits.sort(key=lambda item: item["score"], reverse=True)
         return hits[:limit]
 
+    def list_chunks(self) -> List[Dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, content, metadata FROM document_chunks"
+            ).fetchall()
+
+        return [
+            {
+                "id": row["id"],
+                "content": row["content"],
+                "metadata": json.loads(row["metadata"]),
+            }
+            for row in rows
+        ]
+
     def count(self) -> int:
         with self.connect() as connection:
             row = connection.execute("SELECT COUNT(*) AS count FROM document_chunks").fetchone()

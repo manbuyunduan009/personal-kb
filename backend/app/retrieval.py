@@ -55,18 +55,28 @@ def rerank_hits(
                 str(item.get("content", "")),
             ]
         )
-        vector_score = float(item.get("score", 0.0))
-        keyword_score = lexical_overlap_score(query, haystack)
+        vector_score = float(item.get("vector_recall_score", item.get("score", 0.0)))
+        keyword_recall_score = float(item.get("keyword_recall_score", 0.0))
+        keyword_score = max(lexical_overlap_score(query, haystack), keyword_recall_score)
         header_score = lexical_overlap_score(query, str(metadata.get("chunk_header", "")))
         feedback_score = feedback_scores.get(
             (str(metadata.get("source_path", "")), int(metadata.get("chunk_index", 0))),
             0.0,
         )
+        hybrid_bonus = min(keyword_recall_score * 0.06, 0.08)
         feedback_bonus = max(min(feedback_score * 0.04, 0.12), -0.12)
-        final_score = (vector_score * 0.62) + (keyword_score * 0.24) + (header_score * 0.10) + feedback_bonus
+        final_score = (
+            (vector_score * 0.56)
+            + (keyword_score * 0.24)
+            + (header_score * 0.08)
+            + hybrid_bonus
+            + feedback_bonus
+        )
 
         item["vector_score"] = vector_score
         item["keyword_score"] = keyword_score
+        item["keyword_recall_score"] = keyword_recall_score
+        item["hybrid_bonus"] = hybrid_bonus
         item["feedback_score"] = feedback_score
         item["feedback_bonus"] = feedback_bonus
         item["score"] = final_score
@@ -74,6 +84,39 @@ def rerank_hits(
 
     reranked.sort(key=lambda item: item["score"], reverse=True)
     return reranked[:limit]
+
+
+def keyword_recall_hits(query: str, chunks: List[Dict[str, object]], limit: int = 20) -> List[Dict[str, object]]:
+    hits = []
+    for chunk in chunks:
+        metadata = chunk.get("metadata", {})
+        haystack = "\n".join(
+            [
+                str(metadata.get("title", "")),
+                str(metadata.get("chunk_header", "")),
+                " ".join(metadata.get("generated_questions", []) or []),
+                str(metadata.get("summary", "")),
+                str(chunk.get("content", "")),
+            ]
+        )
+        score = lexical_overlap_score(query, haystack)
+        if score <= 0:
+            continue
+        hits.append(
+            {
+                "id": chunk.get("id", ""),
+                "content": chunk.get("content", ""),
+                "metadata": metadata,
+                "distance": 1.0 - score,
+                "score": 0.0,
+                "keyword_recall_score": score,
+                "retrieval_mode": "keyword",
+                "matched_query": query,
+            }
+        )
+
+    hits.sort(key=lambda item: item["keyword_recall_score"], reverse=True)
+    return hits[:limit]
 
 
 def compress_context(query: str, text: str, max_chars: int = 700) -> str:

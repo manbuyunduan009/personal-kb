@@ -13,6 +13,16 @@ class FakeVectorStore:
     def search(self, query_embedding, limit=5):
         return self.hits[:limit]
 
+    def list_chunks(self):
+        return [
+            {
+                "id": hit["id"],
+                "content": hit["content"],
+                "metadata": hit["metadata"],
+            }
+            for hit in self.hits
+        ]
+
 
 def make_hit(score):
     return {
@@ -61,4 +71,3 @@ def test_answer_keeps_citations_when_evidence_is_enough_without_api_key():
     assert "OPENAI_API_KEY" in result["answer"]
     assert len(result["citations"]) == 1
     assert result["citations"][0]["title"] == "专题验收助手PRD.md"
-

@@ -36,6 +36,7 @@
 | Document Augmentation | 已完成 v0 | 为每个 chunk 规则生成潜在问题，放进 embedding 文本，不伪装成原文展示。 | `backend/app/chunking.py`, `backend/app/indexer.py` | 用小模型生成更自然的问题；按业务类型生成不同问题模板。 |
 | Context Enriched | 已完成 v0 | chunk 元数据保存标题、上文窗口、下文窗口、摘要。 | `backend/app/chunking.py`, `backend/app/vector_store.py` | 增加 parent chunk；把同一章节的相邻块合并给 AI。 |
 | Query Transformation | 已完成 v0 | 用户问题生成多个 query variant，多路检索后合并去重。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 改写问题；支持子问题拆解和多轮追问。 |
+| Hybrid Search | 已完成 v0 | 向量召回和关键词召回并行，合并候选后再 rerank。 | `backend/app/vector_store.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 换成 BM25/SQLite FTS；按字段加权；支持精确短语匹配。 |
 | Rerank | 已完成 v0 | 用向量分、关键词重合度、标题重合度、反馈分做轻量重排。 | `backend/app/retrieval.py` | 接 cross-encoder rerank 模型；按不同文档类型定制权重。 |
 | Sentence Window Retrieval | 已完成 v0 | 回答时把命中 chunk 的前后窗口一起放进上下文。 | `backend/app/rag.py` | 根据命中句定位更精确的句子窗口；长文档按段落窗口扩展。 |
 | Context Compression | 已完成 v0 | 超长上下文按问题关键词挑相关句子，并限制长度。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 压缩；保留表格行标题；按引用来源分别压缩。 |
@@ -98,14 +99,36 @@
 - 用 LLM 把口语问题改写成 3 到 5 个专业检索问题。
 - 对“多个问题合在一起”的输入做子问题拆解。
 
-### 4.4 Rerank
+### 4.4 Hybrid Search
+
+做法：
+
+1. 向量召回继续负责找“语义相近”的候选片段。
+2. `keyword_recall_hits` 同时扫描所有 chunk，找“字面关键词命中”的候选片段。
+3. 两路候选按 chunk id 合并，同一个片段会标记为 `hybrid`。
+4. 前端显示召回方式：向量、关键词、混合。
+5. rerank 时会把 `keyword_recall_score` 纳入最终分。
+
+为什么这样做：
+
+- 向量检索像“找意思相近的内容”，关键词检索像“查字典找原词”。
+- 需求文档里有很多专有名词、日期、模块名、表格字段，精确词命中很重要。
+- 如果第一步召回漏掉了正确片段，后面的 rerank 再聪明也排不到它。
+
+后续你可以单独优化：
+
+- 把当前轻量关键词扫描替换成 SQLite FTS 或 BM25。
+- 对标题、文件名、生成问题、正文设置不同关键词权重。
+- 支持引号包裹的精确短语搜索。
+
+### 4.5 Rerank
 
 做法：
 
 当前公式在 `backend/app/retrieval.py`：
 
 ```text
-最终分 = 向量分 * 0.62 + 关键词分 * 0.24 + 标题分 * 0.10 + 反馈加分
+最终分 = 向量分 * 0.56 + 关键词分 * 0.24 + 标题分 * 0.08 + 混合召回加分 + 反馈加分
 ```
 
 反馈加分目前最多正负 `0.12`，避免用户误点一次就完全改变排序。
@@ -122,7 +145,7 @@
 - 接真实 rerank 模型。
 - 按文档类型设置不同权重。
 
-### 4.5 Feedback Loop
+### 4.6 Feedback Loop
 
 做法：
 
@@ -142,7 +165,7 @@
 - 增加“为什么没帮助”的备注选项。
 - 把反馈和相似问题关联，而不是全局加权。
 
-### 4.6 Self-RAG
+### 4.7 Self-RAG
 
 做法：
 
