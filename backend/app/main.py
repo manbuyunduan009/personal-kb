@@ -6,7 +6,7 @@ from .db import DocumentRepository
 from .embeddings import create_embedding_provider
 from .indexer import Indexer
 from .rag import RagService
-from .schemas import ChatRequest, SearchRequest
+from .schemas import ChatRequest, FeedbackRequest, SearchRequest
 from .vector_store import VectorStore
 
 
@@ -95,7 +95,7 @@ def get_document(document_id: str):
 @app.post("/api/search")
 def search(request: SearchRequest):
     try:
-        settings, _, vector_store, embeddings = rag_services()
+        settings, repository, vector_store, embeddings = rag_services()
     except RuntimeError as exc:
         runtime_error(exc)
     rag = RagService(
@@ -104,6 +104,7 @@ def search(request: SearchRequest):
         openai_api_key=settings.openai_api_key,
         openai_base_url=settings.openai_base_url,
         openai_model=settings.openai_model,
+        feedback_scores=repository.feedback_scores(),
     )
     return {"results": rag.search(request.query, limit=request.limit)}
 
@@ -111,7 +112,7 @@ def search(request: SearchRequest):
 @app.post("/api/chat")
 def chat(request: ChatRequest):
     try:
-        settings, _, vector_store, embeddings = rag_services()
+        settings, repository, vector_store, embeddings = rag_services()
     except RuntimeError as exc:
         runtime_error(exc)
     rag = RagService(
@@ -120,5 +121,26 @@ def chat(request: ChatRequest):
         openai_api_key=settings.openai_api_key,
         openai_base_url=settings.openai_base_url,
         openai_model=settings.openai_model,
+        feedback_scores=repository.feedback_scores(),
     )
     return rag.answer(request.question)
+
+
+@app.post("/api/feedback")
+def create_feedback(request: FeedbackRequest):
+    _, repository = repository_service()
+    feedback = repository.add_feedback(
+        question=request.question,
+        source_path=request.source_path,
+        chunk_index=request.chunk_index,
+        chunk_header=request.chunk_header,
+        rating=request.rating,
+        note=request.note,
+    )
+    return {"ok": True, "feedback": feedback}
+
+
+@app.get("/api/feedback/summary")
+def feedback_summary():
+    _, repository = repository_service()
+    return {"summary": repository.feedback_summary()}

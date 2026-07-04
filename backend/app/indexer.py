@@ -4,11 +4,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-from .chunking import split_text
+from .chunking import build_chunk_records
 from .db import DocumentRepository
 from .embeddings import EmbeddingProvider
 from .parsers import SUPPORTED_EXTENSIONS, parse_document
 from .vector_store import VectorStore
+
+
+INDEX_SCHEMA_VERSION = "rag-optimization-v1"
 
 
 def file_hash(path: Path) -> str:
@@ -53,7 +56,7 @@ class Indexer:
 
         for path in self.scan_files():
             try:
-                content_hash = file_hash(path)
+                content_hash = "%s:%s" % (file_hash(path), INDEX_SCHEMA_VERSION)
                 source_path = str(path.resolve())
                 existing = self.repository.get_by_source_path(source_path)
                 if existing and existing["content_hash"] == content_hash:
@@ -61,12 +64,13 @@ class Indexer:
                     continue
 
                 content = parse_document(path).strip()
-                chunks = split_text(content)
-                if not chunks:
+                chunk_records = build_chunk_records(path.name, content)
+                if not chunk_records:
                     skipped.append({"path": source_path, "reason": "empty"})
                     continue
 
-                embedding_texts = ["%s\n%s" % (path.name, chunk) for chunk in chunks]
+                chunks = [str(record["content"]) for record in chunk_records]
+                embedding_texts = [str(record["embedding_text"]) for record in chunk_records]
                 vectors = self.embeddings.embed(embedding_texts)
                 document_id = document_id_for_path(path)
                 self.vector_store.replace_document_chunks(
@@ -77,7 +81,18 @@ class Indexer:
                         "title": path.name,
                         "source_path": source_path,
                         "file_type": path.suffix.lower(),
+                        "index_version": INDEX_SCHEMA_VERSION,
                     },
+                    chunk_metadatas=[
+                        {
+                            "chunk_header": record["chunk_header"],
+                            "generated_questions": record["generated_questions"],
+                            "previous_context": record["previous_context"],
+                            "next_context": record["next_context"],
+                            "context_summary": record["context_summary"],
+                        }
+                        for record in chunk_records
+                    ],
                 )
 
                 stat = path.stat()

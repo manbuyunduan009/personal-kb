@@ -32,10 +32,16 @@ export type SearchHit = {
     file_type: string;
     document_id: string;
     chunk_index: number;
+    chunk_header?: string;
     summary: string;
   };
   distance: number;
   score: number;
+  vector_score?: number;
+  keyword_score?: number;
+  feedback_score?: number;
+  feedback_bonus?: number;
+  matched_query?: string;
 };
 
 export type Citation = {
@@ -43,8 +49,10 @@ export type Citation = {
   source_path: string;
   file_type: string;
   chunk_index: number;
+  chunk_header?: string;
   summary: string;
   score: number;
+  feedback_score?: number;
 };
 
 export type IndexResult = {
@@ -89,5 +97,19 @@ export function chat(question: string) {
   return request<{ answer: string; citations: Citation[] }>("/api/chat", {
     method: "POST",
     body: JSON.stringify({ question })
+  });
+}
+
+export function submitFeedback(input: {
+  question: string;
+  source_path: string;
+  chunk_index: number;
+  chunk_header?: string;
+  rating: 1 | -1;
+  note?: string;
+}) {
+  return request<{ ok: boolean }>("/api/feedback", {
+    method: "POST",
+    body: JSON.stringify(input)
   });
 }

@@ -164,3 +164,5 @@ python scripts\eval_retrieval.py
 
 优先级 4：增加评测脚本。
 原因：RAG 质量要靠固定问题集持续验证，不能只靠感觉。
+
+截图里的进阶优化方向已经整理到 `docs/RAG_OPTIMIZATION_PLAN.md`。后续优化会按“先低依赖、再反馈闭环、最后模型级增强”的顺序推进。

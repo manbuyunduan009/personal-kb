@@ -112,7 +112,26 @@ python scripts\eval_retrieval.py
 
 期望看到 `Summary: 5/5 passed`。
 
-## 7. 不会提交到 GitHub 的内容
+## 7. RAG 优化路线
+
+项目已经把截图里的优化方向整理到：
+
+```text
+docs/RAG_OPTIMIZATION_PLAN.md
+```
+
+当前第一轮已经开始落地低依赖优化：
+
+- Chunk Header：给每个切片增加块级标题。
+- Document Augmentation：给切片生成潜在问题，用于提升匹配率。
+- Query Transformation：把用户问题扩展成多个检索问题。
+- Rerank v0：用向量分和关键词重合度做轻量重排。
+- Sentence Window / Context Compression v0：回答时补前后文，并控制上下文长度。
+- Feedback Loop v0：引用和检索片段支持“有帮助 / 没帮助”，反馈会存入 SQLite 并小幅影响后续排序。
+
+因为索引策略会影响向量内容，换电脑或拉取新代码后建议重新点击一次“索引文档”。
+
+## 8. 不会提交到 GitHub 的内容
 
 这些内容是本地运行产物，不应该提交：
 
@@ -130,7 +149,7 @@ frontend/dist/
 - `.env` 里可能有 API Key。
 - embedding 模型权重通常在用户目录缓存，例如 Hugging Face cache。
 
-## 8. 常见问题
+## 9. 常见问题
 
 ### 页面显示“向量库未就绪”
 

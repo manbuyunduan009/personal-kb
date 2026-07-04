@@ -3,7 +3,7 @@ import math
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional
 
 
 SCHEMA = """
@@ -53,14 +53,17 @@ class VectorStore:
         chunks: List[str],
         embeddings: List[List[float]],
         metadata: Dict[str, str],
+        chunk_metadatas: Optional[List[Dict[str, object]]] = None,
     ) -> None:
         with self.connect() as connection:
             connection.execute("DELETE FROM document_chunks WHERE document_id = ?", (document_id,))
             for index, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
                 item = dict(metadata)
+                if chunk_metadatas and index < len(chunk_metadatas):
+                    item.update(chunk_metadatas[index])
                 item["document_id"] = document_id
                 item["chunk_index"] = index
-                item["summary"] = chunk[:180]
+                item["summary"] = item.get("context_summary", chunk[:180])
                 connection.execute(
                     """
                     INSERT INTO document_chunks (id, document_id, content, embedding, metadata)
@@ -78,7 +81,7 @@ class VectorStore:
     def search(self, query_embedding: List[float], limit: int = 5) -> List[Dict[str, object]]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT content, embedding, metadata FROM document_chunks"
+                "SELECT id, content, embedding, metadata FROM document_chunks"
             ).fetchall()
 
         hits = []
@@ -87,6 +90,7 @@ class VectorStore:
             score = cosine_similarity(query_embedding, embedding)
             hits.append(
                 {
+                    "id": row["id"],
                     "content": row["content"],
                     "metadata": json.loads(row["metadata"]),
                     "distance": 1.0 - score,

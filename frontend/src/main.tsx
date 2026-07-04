@@ -10,7 +10,9 @@ import {
   Play,
   Search,
   Server,
-  Sparkles
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp
 } from "lucide-react";
 import {
   chat,
@@ -22,7 +24,8 @@ import {
   IndexResult,
   runIndex,
   search,
-  SearchHit
+  SearchHit,
+  submitFeedback
 } from "./api";
 import "./styles.css";
 
@@ -47,6 +50,8 @@ function App() {
   const [loading, setLoading] = useState<"index" | "search" | "chat" | "boot" | "">("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [feedbackLoadingKey, setFeedbackLoadingKey] = useState("");
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedId) || documents[0],
@@ -115,6 +120,37 @@ function App() {
     }
   }
 
+  async function handleFeedback(
+    sourcePath: string,
+    chunkIndex: number,
+    chunkHeader: string | undefined,
+    rating: 1 | -1
+  ) {
+    const activeQuestion = lastSearchQuery || question;
+    const key = `${sourcePath}-${chunkIndex}-${rating}`;
+    setFeedbackLoadingKey(key);
+    setFeedbackMessage("");
+    setError("");
+    try {
+      await submitFeedback({
+        question: activeQuestion,
+        source_path: sourcePath,
+        chunk_index: chunkIndex,
+        chunk_header: chunkHeader || "",
+        rating
+      });
+      setFeedbackMessage(rating === 1 ? "已记录：这个片段有帮助。" : "已记录：这个片段不够相关。");
+      if (lastSearchQuery) {
+        const data = await search(lastSearchQuery);
+        setResults(data.results);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setFeedbackLoadingKey("");
+    }
+  }
+
   return (
     <main className="shell">
       <section className="topbar">
@@ -158,6 +194,13 @@ function App() {
           <span>
             已索引 {indexResult.indexed.length} 个，跳过 {indexResult.skipped.length} 个，失败 {indexResult.failed.length} 个
           </span>
+        </section>
+      )}
+
+      {feedbackMessage && (
+        <section className="notice">
+          <ThumbsUp size={18} />
+          <span>{feedbackMessage} 下次检索会参考这条反馈。</span>
         </section>
       )}
 
@@ -213,8 +256,19 @@ function App() {
             {citations.map((citation, index) => (
               <div className="citation" key={`${citation.source_path}-${citation.chunk_index}`}>
                 <b>[{index + 1}] {citation.title}</b>
-                <span>切片 {citation.chunk_index} · 相关度 {citation.score.toFixed(2)}</span>
+                <span>
+                  {citation.chunk_header ? `${citation.chunk_header} · ` : ""}
+                  切片 {citation.chunk_index} · 相关度 {citation.score.toFixed(2)}
+                  {citation.feedback_score ? ` · 反馈分 ${citation.feedback_score}` : ""}
+                </span>
                 <p>{citation.summary}</p>
+                <FeedbackActions
+                  sourcePath={citation.source_path}
+                  chunkIndex={citation.chunk_index}
+                  chunkHeader={citation.chunk_header}
+                  loadingKey={feedbackLoadingKey}
+                  onFeedback={handleFeedback}
+                />
               </div>
             ))}
           </article>
@@ -243,8 +297,25 @@ function App() {
                   <b>{hit.metadata.title}</b>
                   <span>{hit.score.toFixed(2)}</span>
                 </header>
-                <small>切片 {hit.metadata.chunk_index} · {shortPath(hit.metadata.source_path)}</small>
+                <small>
+                  {hit.metadata.chunk_header ? `${hit.metadata.chunk_header} · ` : ""}
+                  切片 {hit.metadata.chunk_index} · {shortPath(hit.metadata.source_path)}
+                </small>
+                {(hit.matched_query || hit.keyword_score !== undefined) && (
+                  <small>
+                    {hit.matched_query ? `匹配问题：${hit.matched_query}` : ""}
+                    {hit.keyword_score !== undefined ? ` · 关键词分 ${hit.keyword_score.toFixed(2)}` : ""}
+                    {hit.feedback_score ? ` · 反馈分 ${hit.feedback_score}` : ""}
+                  </small>
+                )}
                 <p>{hit.content}</p>
+                <FeedbackActions
+                  sourcePath={hit.metadata.source_path}
+                  chunkIndex={hit.metadata.chunk_index}
+                  chunkHeader={hit.metadata.chunk_header}
+                  loadingKey={feedbackLoadingKey}
+                  onFeedback={handleFeedback}
+                />
               </article>
             ))}
           </div>
@@ -259,6 +330,43 @@ function App() {
         </aside>
       </section>
     </main>
+  );
+}
+
+function FeedbackActions({
+  sourcePath,
+  chunkIndex,
+  chunkHeader,
+  loadingKey,
+  onFeedback
+}: {
+  sourcePath: string;
+  chunkIndex: number;
+  chunkHeader?: string;
+  loadingKey: string;
+  onFeedback: (sourcePath: string, chunkIndex: number, chunkHeader: string | undefined, rating: 1 | -1) => void;
+}) {
+  const upKey = `${sourcePath}-${chunkIndex}-1`;
+  const downKey = `${sourcePath}-${chunkIndex}--1`;
+  return (
+    <div className="feedback-actions">
+      <button
+        aria-label="标记这个片段有帮助"
+        title="有帮助"
+        disabled={loadingKey === upKey || loadingKey === downKey}
+        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, 1)}
+      >
+        {loadingKey === upKey ? <Loader2 className="spin" size={15} /> : <ThumbsUp size={15} />}
+      </button>
+      <button
+        aria-label="标记这个片段不够相关"
+        title="没帮助"
+        disabled={loadingKey === upKey || loadingKey === downKey}
+        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, -1)}
+      >
+        {loadingKey === downKey ? <Loader2 className="spin" size={15} /> : <ThumbsDown size={15} />}
+      </button>
+    </div>
   );
 }
 

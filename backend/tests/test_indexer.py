@@ -15,13 +15,14 @@ class FakeVectorStore:
     def __init__(self):
         self.replacements = []
 
-    def replace_document_chunks(self, document_id, chunks, embeddings, metadata):
+    def replace_document_chunks(self, document_id, chunks, embeddings, metadata, chunk_metadatas=None):
         self.replacements.append(
             {
                 "document_id": document_id,
                 "chunks": chunks,
                 "embeddings": embeddings,
                 "metadata": metadata,
+                "chunk_metadatas": chunk_metadatas or [],
             }
         )
 

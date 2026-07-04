@@ -32,6 +32,7 @@ personal-kb
 
 - [交付说明](docs/HANDOFF.md)：换电脑、部署到办公电脑、首次验收、常见问题。
 - [RAG 质量说明](docs/RAG_QUALITY.md)：为什么 RAG 容易效果不好，以及本项目的质量路线。
+- [RAG 优化计划](docs/RAG_OPTIMIZATION_PLAN.md)：根据截图整理的 Small-to-Big、Chunk Header、Query Transformation、Rerank、反馈闭环等优化路线。
 
 ## 后端启动
 

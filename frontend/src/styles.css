@@ -275,6 +275,26 @@ h3 {
   line-height: 1.55;
 }
 
+.feedback-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.feedback-actions button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #f8f5ec;
+}
+
+.feedback-actions button:hover:not(:disabled) {
+  background: #d8e9c6;
+}
+
 .preview {
   margin-top: 16px;
 }
