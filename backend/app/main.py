@@ -7,7 +7,12 @@ from .config import get_settings
 from .db import DocumentRepository
 from .embeddings import create_embedding_provider
 from .indexer import Indexer
-from .product_expert import analyze_requirement_change, build_requirement_card, group_documents_by_requirement
+from .product_expert import (
+    analyze_requirement_change,
+    build_requirement_card,
+    find_similar_requirements,
+    group_documents_by_requirement,
+)
 from .rag import RagService
 from .schemas import ChangeAnalysisRequest, ChatRequest, FeedbackRequest, SearchRequest
 from .vector_store import VectorStore
@@ -175,6 +180,16 @@ def get_product_requirement_card(requirement_key: str):
     documents = repository.list_documents()
     try:
         return build_requirement_card(requirement_key, documents)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Requirement not found") from exc
+
+
+@app.get("/api/product/requirements/{requirement_key}/similar")
+def get_similar_product_requirements(requirement_key: str, limit: int = Query(default=3, ge=1, le=10)):
+    _, repository = repository_service()
+    documents = repository.list_documents()
+    try:
+        return find_similar_requirements(requirement_key, documents, limit=limit)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Requirement not found") from exc
 

@@ -332,6 +332,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_report.py
 - 需求卡片 v0 已提前落地。
 - 当前卡片使用规则抽取，不调用 AI，不依赖真实 embedding。
 - 已能输出背景、目标、用户/角色、范围/功能、关键规则、风险点、验收点、待确认问题和下一步动作。
+- 相似历史需求 v0 已落地：当前使用需求卡片关键词、影响模块和项目名做规则相似度，不调用 AI，不依赖真实 embedding。
 
 要做：
 
@@ -346,6 +347,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_report.py
 2. 对需求卡片做 embedding。
 3. 用户问新需求时，先找相似需求卡片，再找具体文档证据。
 4. 输出“相似原因”。
+5. 把当前规则相似度升级为 embedding + rerank 混合相似度。
 
 好处：
 

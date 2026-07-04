@@ -236,6 +236,150 @@ def build_requirement_card(requirement_key: str, documents: List[Dict[str, objec
     }
 
 
+def find_similar_requirements(
+    requirement_key: str,
+    documents: List[Dict[str, object]],
+    limit: int = 3,
+) -> Dict[str, object]:
+    target_card = build_requirement_card(requirement_key, documents)
+    groups = group_documents_by_requirement(documents)
+    candidates = []
+    for group in groups:
+        candidate_key = str(group.get("requirement_key", ""))
+        if candidate_key == requirement_key:
+            continue
+        candidate_card = build_requirement_card(candidate_key, documents)
+        score, reasons, shared_terms, shared_modules = score_card_similarity(target_card, candidate_card)
+        candidates.append(
+            {
+                "requirement_key": candidate_card["requirement_key"],
+                "requirement_title": candidate_card["requirement_title"],
+                "project_name": candidate_card["project_name"],
+                "score": score,
+                "reasons": reasons,
+                "shared_terms": shared_terms[:12],
+                "shared_modules": shared_modules,
+                "summary": candidate_card["summary"],
+                "document_count": candidate_card["document_count"],
+                "version_label": candidate_card["version_label"],
+            }
+        )
+
+    candidates = sorted(candidates, key=lambda item: float(item["score"]), reverse=True)
+    return {
+        "target": {
+            "requirement_key": target_card["requirement_key"],
+            "requirement_title": target_card["requirement_title"],
+            "project_name": target_card["project_name"],
+            "summary": target_card["summary"],
+        },
+        "similar": candidates[: max(0, limit)],
+        "strategy": "规则版相似度：需求卡片关键词 + 影响模块 + 项目名加权；不调用 AI，不依赖真实 embedding。",
+        "limitations": [
+            "v0 使用词面相似度，不能理解深层业务语义。",
+            "同项目、同模块会更容易相似，但仍需要人工复核。",
+            "切到真实 embedding 后，可以把卡片相似度升级为语义相似度。",
+        ],
+    }
+
+
+def score_card_similarity(
+    target_card: Dict[str, object],
+    candidate_card: Dict[str, object],
+) -> Tuple[float, List[str], List[str], List[str]]:
+    target_tokens = card_tokens(target_card)
+    candidate_tokens = card_tokens(candidate_card)
+    shared_terms = sorted(target_tokens & candidate_tokens)
+    union_size = len(target_tokens | candidate_tokens)
+    token_score = len(shared_terms) / union_size if union_size else 0.0
+
+    target_modules = module_labels(target_card)
+    candidate_modules = module_labels(candidate_card)
+    shared_modules = sorted(target_modules & candidate_modules)
+    module_union_size = len(target_modules | candidate_modules)
+    module_score = len(shared_modules) / module_union_size if module_union_size else 0.0
+
+    same_project = target_card.get("project_name") == candidate_card.get("project_name")
+    project_score = 1.0 if same_project and target_card.get("project_name") not in {"", "未识别项目"} else 0.0
+
+    score = round(min((token_score * 0.58) + (module_score * 0.27) + (project_score * 0.15), 1.0), 4)
+    reasons = []
+    if same_project:
+        reasons.append("同项目：%s" % target_card.get("project_name", ""))
+    if shared_modules:
+        reasons.append("共同影响模块：%s" % "、".join(shared_modules[:4]))
+    if shared_terms:
+        reasons.append("共同关键词：%s" % "、".join(shared_terms[:8]))
+    if not reasons:
+        reasons.append("未找到明显共同特征，仅作为低相似候选。")
+    return score, reasons, shared_terms, shared_modules
+
+
+def card_tokens(card: Dict[str, object]) -> set:
+    text_parts = [
+        str(card.get("requirement_title", "")),
+        str(card.get("project_name", "")),
+        str(card.get("summary", "")),
+    ]
+    sections = card.get("sections", {})
+    if isinstance(sections, dict):
+        for items in sections.values():
+            if isinstance(items, list):
+                text_parts.extend(str(item) for item in items)
+    field_facts = card.get("field_facts", [])
+    if isinstance(field_facts, list):
+        for fact in field_facts:
+            if isinstance(fact, dict):
+                text_parts.append("%s %s" % (fact.get("label", ""), fact.get("value", "")))
+    return tokenize_similarity_text("\n".join(text_parts))
+
+
+def module_labels(card: Dict[str, object]) -> set:
+    modules = card.get("impact_modules", [])
+    labels = set()
+    if isinstance(modules, list):
+        for module in modules:
+            if isinstance(module, dict) and module.get("label"):
+                labels.add(str(module["label"]))
+    return labels
+
+
+def tokenize_similarity_text(text: str) -> set:
+    normalized = text.lower()
+    tokens = set(re.findall(r"[a-z0-9][a-z0-9_+\-.%]{1,}", normalized, flags=re.IGNORECASE))
+    cjk_runs = re.findall(r"[\u4e00-\u9fff]+", normalized)
+    for run in cjk_runs:
+        if len(run) <= 2:
+            tokens.add(run)
+            continue
+        for size in (2, 3):
+            if len(run) < size:
+                continue
+            for index in range(len(run) - size + 1):
+                token = run[index : index + size]
+                if not is_weak_similarity_token(token):
+                    tokens.add(token)
+    return tokens
+
+
+def is_weak_similarity_token(token: str) -> bool:
+    weak_tokens = {
+        "需求",
+        "文档",
+        "功能",
+        "项目",
+        "页面",
+        "用户",
+        "规则",
+        "支持",
+        "进行",
+        "需要",
+        "可以",
+        "实现",
+    }
+    return token in weak_tokens
+
+
 def load_document_text(document: Dict[str, object]) -> str:
     path = Path(str(document.get("source_path", "")))
     if path.exists():

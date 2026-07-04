@@ -19,6 +19,7 @@
 - 能看到系统识别出的需求分组。
 - 能看到每个需求下有哪些文档版本。
 - 能点击“查看卡片”，看到需求背景、目标、范围、规则、风险、验收点和待确认问题。
+- 能点击“找相似”，看到相似历史需求、相似分和相似原因。
 - 如果同一需求有两个版本，能做变更分析。
 - 即使当前资料版本不足，也能看到清晰的提示和下一步工作方向。
 
@@ -141,12 +142,33 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 平均卡片完整度。
 - 卡片质量分布。
 - 最常缺失的章节。
+- 相似需求生成成功率。
+- 平均相似候选数量。
+- 平均最高相似分。
 
 验收标准：
 
 - 后端启动后运行脚本，能输出 `Product Expert Eval`。
 - `api_failure_count = 0`。
 - `card_success_count` 大于 0。
+
+### P0-7 相似历史需求
+
+状态：已完成。
+
+基于需求卡片做规则相似度检索：
+
+- 需求卡片关键词重合。
+- 影响模块重合。
+- 同项目加权。
+- 输出相似分、共同模块、共同关键词和相似原因。
+
+验收标准：
+
+- 产品专家面板里每个需求都有“找相似”按钮。
+- 点击后能看到相似需求列表。
+- 每条结果显示相似分和原因。
+- 不调用 AI，不依赖真实 embedding。
 
 ## 3. 今晚 P1 范围
 
@@ -175,12 +197,14 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `infer_requirement_identity(document)`
 - `group_documents_by_requirement(documents)`
 - `build_requirement_card(requirement_key, documents)`
+- `find_similar_requirements(requirement_key, documents, limit)`
 - `analyze_requirement_change(old_document, new_document)`
 
 新增 API：
 
 - `GET /api/product/requirements`
 - `GET /api/product/requirements/{requirement_key}/card`
+- `GET /api/product/requirements/{requirement_key}/similar`
 - `POST /api/product/change-analysis`
 
 新增脚本：
@@ -194,6 +218,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `RequirementGroup`
 - `RequirementVersion`
 - `RequirementCard`
+- `SimilarRequirementsResult`
 - `ChangeAnalysis`
 
 新增 UI：
@@ -203,6 +228,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 版本数量和最新文档
 - 需求卡片按钮和卡片详情
 - 卡片质量、完整度和缺失章节提示
+- 相似需求按钮和相似结果列表
 - 变更分析按钮
 - 变更摘要展示
 
@@ -229,8 +255,9 @@ npm run build
 3. 看右侧或中部是否出现“产品专家”区域。
 4. 查看需求分组是否合理。
 5. 点击“查看卡片”，确认能看到摘要、影响模块、待确认问题和下一步。
-6. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
-7. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
+6. 点击“找相似”，确认能看到相似需求、相似分、共同模块或相似原因。
+7. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
+8. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
 
 ### 产品专家评测
 
@@ -250,18 +277,20 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 
 ### 当前验证结果
 
-- 后端测试：`68 passed`。
+- 后端测试：`70 passed`。
 - 前端构建：`npm run build` 通过。
 - 新增后端模块：`backend/app/product_expert.py`。
 - 新增 API：
   - `GET /api/product/requirements`
   - `GET /api/product/requirements/{requirement_key}/card`
+  - `GET /api/product/requirements/{requirement_key}/similar`
   - `POST /api/product/change-analysis`
 - 新增脚本：`backend/scripts/eval_product_expert.py`
 - 新增前端入口：右侧“产品专家”面板。
 - 临时后端 API 验证：`GET /api/product/requirements` 成功返回 4 个需求分组。
 - 临时后端 API 验证：`GET /api/product/requirements/{requirement_key}/card` 成功返回需求卡片。
 - 临时后端专项评测：`eval_product_expert.py` 通过，`card_success_count: 4/4`，`api_failure_count: 0`。
+- 临时后端专项评测：相似需求通过，`similar_success_count: 4`，`avg_similar_count: 3.00`，`avg_top_similar_score: 0.42`。
 
 ## 7. 这一步的价值
 

@@ -175,6 +175,31 @@ export type RequirementCard = {
   limitations: string[];
 };
 
+export type SimilarRequirement = {
+  requirement_key: string;
+  requirement_title: string;
+  project_name: string;
+  score: number;
+  reasons: string[];
+  shared_terms: string[];
+  shared_modules: string[];
+  summary: string;
+  document_count: number;
+  version_label: string;
+};
+
+export type SimilarRequirementsResult = {
+  target: {
+    requirement_key: string;
+    requirement_title: string;
+    project_name: string;
+    summary: string;
+  };
+  similar: SimilarRequirement[];
+  strategy: string;
+  limitations: string[];
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -216,6 +241,12 @@ export function getProductRequirements() {
 
 export function getRequirementCard(requirementKey: string) {
   return request<RequirementCard>(`/api/product/requirements/${encodeURIComponent(requirementKey)}/card`);
+}
+
+export function getSimilarRequirements(requirementKey: string, limit = 3) {
+  return request<SimilarRequirementsResult>(
+    `/api/product/requirements/${encodeURIComponent(requirementKey)}/similar?limit=${limit}`
+  );
 }
 
 export function analyzeChange(oldDocumentId: string, newDocumentId: string) {

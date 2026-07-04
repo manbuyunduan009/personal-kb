@@ -1,4 +1,10 @@
-from scripts.eval_product_expert import evaluate_card, evaluate_requirements, format_text_report, summarize
+from scripts.eval_product_expert import (
+    evaluate_card,
+    evaluate_requirements,
+    evaluate_similar,
+    format_text_report,
+    summarize,
+)
 
 
 def test_evaluate_requirements_counts_versions():
@@ -40,6 +46,23 @@ def test_evaluate_card_extracts_quality_fields():
     assert record["open_question_count"] == 1
 
 
+def test_evaluate_similar_extracts_top_match():
+    requirement = {"requirement_key": "a", "requirement_title": "需求A"}
+    response = {
+        "similar": [
+            {"requirement_title": "需求B", "score": 0.72},
+            {"requirement_title": "需求C", "score": 0.35},
+        ]
+    }
+
+    record = evaluate_similar(requirement, response, latency_ms=10)
+
+    assert record["ok"] is True
+    assert record["similar_count"] == 2
+    assert record["top_score"] == 0.72
+    assert record["top_title"] == "需求B"
+
+
 def test_summarize_and_format_text_report():
     requirement_record = {
         "ok": True,
@@ -71,11 +94,23 @@ def test_summarize_and_format_text_report():
         },
     ]
 
-    summary = summarize(requirement_record, card_records)
+    similar_records = [
+        {
+            "ok": True,
+            "similar_count": 2,
+            "top_score": 0.6,
+            "requirement_title": "需求A",
+            "top_title": "需求B",
+        }
+    ]
+
+    summary = summarize(requirement_record, card_records, similar_records)
 
     assert summary["avg_card_completeness_score"] == 0.5
     assert summary["quality_status_distribution"] == {"good": 1, "needs_review": 1}
     assert summary["missing_section_distribution"] == {"目标": 1}
+    assert summary["similar_success_count"] == 1
+    assert summary["avg_top_similar_score"] == 0.6
 
     text = format_text_report(
         {
@@ -83,8 +118,10 @@ def test_summarize_and_format_text_report():
             "generated_at": "2026-07-04T00:00:00+00:00",
             "summary": summary,
             "cards": card_records,
+            "similar": similar_records,
         }
     )
 
     assert "Product Expert Eval" in text
     assert "avg_card_completeness_score: 0.50" in text
+    assert "Similar requirements:" in text

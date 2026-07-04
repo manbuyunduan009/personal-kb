@@ -80,14 +80,38 @@ def evaluate_card(requirement: Dict[str, Any], response: Optional[Dict[str, Any]
     }
 
 
+def evaluate_similar(requirement: Dict[str, Any], response: Optional[Dict[str, Any]], latency_ms: int, error: str = ""):
+    response = response if isinstance(response, dict) else {}
+    similar = response.get("similar", []) if isinstance(response.get("similar", []), list) else []
+    top_score = 0.0
+    if similar and isinstance(similar[0], dict):
+        top_score = float(similar[0].get("score", 0.0) or 0.0)
+    return {
+        "ok": not error,
+        "error": error,
+        "latency_ms": latency_ms,
+        "requirement_key": requirement.get("requirement_key", ""),
+        "requirement_title": requirement.get("requirement_title", ""),
+        "similar_count": len(similar),
+        "top_score": top_score,
+        "top_title": str(similar[0].get("requirement_title", "")) if similar and isinstance(similar[0], dict) else "",
+    }
+
+
 def average(values: List[float]) -> float:
     if not values:
         return 0.0
     return round(sum(values) / len(values), 4)
 
 
-def summarize(requirement_record: Dict[str, Any], card_records: List[Dict[str, Any]]) -> Dict[str, Any]:
+def summarize(
+    requirement_record: Dict[str, Any],
+    card_records: List[Dict[str, Any]],
+    similar_records: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    similar_records = similar_records or []
     successful_cards = [record for record in card_records if record.get("ok")]
+    successful_similar = [record for record in similar_records if record.get("ok")]
     status_counts = Counter(str(record.get("quality_status", "unknown") or "unknown") for record in successful_cards)
     missing_counts: Counter = Counter()
     weak_counts: Counter = Counter()
@@ -108,8 +132,13 @@ def summarize(requirement_record: Dict[str, Any], card_records: List[Dict[str, A
         "weak_section_distribution": dict(weak_counts),
         "avg_open_questions": average([float(record["open_question_count"]) for record in successful_cards]),
         "avg_next_actions": average([float(record["next_action_count"]) for record in successful_cards]),
+        "similar_success_count": len(successful_similar),
+        "similar_failure_count": len(similar_records) - len(successful_similar),
+        "avg_similar_count": average([float(record["similar_count"]) for record in successful_similar]),
+        "avg_top_similar_score": average([float(record["top_score"]) for record in successful_similar]),
         "api_failure_count": (0 if requirement_record.get("ok") else 1)
-        + sum(1 for record in card_records if not record.get("ok")),
+        + sum(1 for record in card_records if not record.get("ok"))
+        + sum(1 for record in similar_records if not record.get("ok")),
     }
 
 
@@ -127,17 +156,26 @@ def build_report(base_url: str, limit: int) -> Dict[str, Any]:
             "/api/product/requirements/%s/card" % key,
         )
         card_records.append(evaluate_card(requirement, response, card_latency_ms, card_error))
+    similar_records = []
+    for requirement in requirements:
+        key = urllib.parse.quote(str(requirement.get("requirement_key", "")), safe="")
+        response, similar_latency_ms, similar_error = request_json(
+            base_url,
+            "/api/product/requirements/%s/similar?limit=3" % key,
+        )
+        similar_records.append(evaluate_similar(requirement, response, similar_latency_ms, similar_error))
 
     return {
         "base_url": base_url,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "summary": summarize(requirement_record, card_records),
+        "summary": summarize(requirement_record, card_records, similar_records),
         "requirements": {
             key: value
             for key, value in requirement_record.items()
             if key != "requirements"
         },
         "cards": card_records,
+        "similar": similar_records,
     }
 
 
@@ -174,6 +212,9 @@ def format_text_report(report: Dict[str, Any]) -> str:
         "weak_section_distribution: %s" % format_counts(summary["weak_section_distribution"]),
         "avg_open_questions: %.2f" % summary["avg_open_questions"],
         "avg_next_actions: %.2f" % summary["avg_next_actions"],
+        "similar_success_count: %s" % summary["similar_success_count"],
+        "avg_similar_count: %.2f" % summary["avg_similar_count"],
+        "avg_top_similar_score: %.2f" % summary["avg_top_similar_score"],
         "api_failure_count: %s" % summary["api_failure_count"],
         "",
         "Cards:",
@@ -188,6 +229,21 @@ def format_text_report(report: Dict[str, Any]) -> str:
                 record.get("quality_status", ""),
                 record.get("completeness_score", 0.0),
                 ", ".join(record.get("missing_sections", [])) or "none",
+            )
+        )
+        if record.get("error"):
+            lines.append("  error: %s" % record["error"])
+    lines.extend(["", "Similar requirements:"])
+    for record in report.get("similar", []):
+        status = "PASS" if record.get("ok") else "API_ERROR"
+        lines.append(
+            "[%s] %s | similar=%s | top=%s | score=%.2f"
+            % (
+                status,
+                record.get("requirement_title", ""),
+                record.get("similar_count", 0),
+                record.get("top_title", "") or "none",
+                record.get("top_score", 0.0),
             )
         )
         if record.get("error"):

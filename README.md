@@ -153,7 +153,7 @@ python scripts\eval_report.py --compare reports\baseline.json --save reports\cur
 python scripts\eval_product_expert.py
 ```
 
-这个脚本会检查需求分组和需求卡片是否能生成，并统计卡片完整度、缺失章节、待确认问题和下一步动作数量。
+这个脚本会检查需求分组、需求卡片和相似需求是否能生成，并统计卡片完整度、缺失章节、待确认问题、下一步动作数量、相似需求数量和最高相似分。
 
 ## 下一步练习
 

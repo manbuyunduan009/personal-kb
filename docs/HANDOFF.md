@@ -151,7 +151,7 @@ docs/RAG_OPTIMIZATION_PLAN.md
 - RAG Trace v3：记录 Self-RAG、召回方式、LLM 改写和 Citation Check 诊断。
 - Citation Check v1：检查答案结论是否能被引用支撑，当前只记录风险，不拦截答案。
 - Eval Report v3：支持保存报告、对比基线，并统计 Citation Check 风险指标。
-- Product Expert v0.1：新增“产品专家”面板，按规则识别需求分组和版本，支持需求卡片、卡片完整度评分、专项评测脚本，并提供两个文档版本的变更分析骨架。
+- Product Expert v0.1：新增“产品专家”面板，按规则识别需求分组和版本，支持需求卡片、卡片完整度评分、相似历史需求、专项评测脚本，并提供两个文档版本的变更分析骨架。
 
 因为索引策略会影响向量内容，换电脑或拉取新代码后建议重新点击一次“索引文档”。
 

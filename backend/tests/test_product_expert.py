@@ -3,6 +3,7 @@ from pathlib import Path
 from app.product_expert import (
     analyze_requirement_change,
     build_requirement_card,
+    find_similar_requirements,
     group_documents_by_requirement,
     infer_requirement_identity,
 )
@@ -164,3 +165,63 @@ def test_requirement_card_quality_flags_missing_sections(tmp_path: Path):
     assert card["quality"]["status"] == "needs_review"
     assert "目标" in card["quality"]["missing_sections"]
     assert card["quality"]["review_notes"]
+
+
+def test_find_similar_requirements_returns_ranked_candidates(tmp_path: Path):
+    target = tmp_path / "target.md"
+    similar = tmp_path / "similar.md"
+    different = tmp_path / "different.md"
+    target.write_text(
+        "《剑网3》周年庆预约小程序\n目标：支持玩家预约活动。\n功能范围：预约、票务、微信授权登录。\n验收：检查预约规则。",
+        encoding="utf-8",
+    )
+    similar.write_text(
+        "《剑网3》演唱会预约活动\n目标：支持玩家预约演唱会。\n功能范围：预约、票务、微信授权。\n验收：检查预约状态。",
+        encoding="utf-8",
+    )
+    different.write_text(
+        "专题验收助手\n目标：帮助产品经理验收活动页面。\n功能范围：页面检查和规则校验。",
+        encoding="utf-8",
+    )
+    documents = [
+        {
+            "id": "target",
+            "title": "【需求管理】《剑网3》周年庆预约小程序.md",
+            "source_path": str(target),
+            "file_type": ".md",
+            "content_preview": target.read_text(encoding="utf-8"),
+            "last_modified": 300,
+            "indexed_at": "2026-07-03T00:00:00Z",
+        },
+        {
+            "id": "similar",
+            "title": "【需求管理】《剑网3》演唱会预约活动.md",
+            "source_path": str(similar),
+            "file_type": ".md",
+            "content_preview": similar.read_text(encoding="utf-8"),
+            "last_modified": 200,
+            "indexed_at": "2026-07-02T00:00:00Z",
+        },
+        {
+            "id": "different",
+            "title": "专题验收助手PRD.md",
+            "source_path": str(different),
+            "file_type": ".md",
+            "content_preview": different.read_text(encoding="utf-8"),
+            "last_modified": 100,
+            "indexed_at": "2026-07-01T00:00:00Z",
+        },
+    ]
+    target_key = next(
+        group["requirement_key"]
+        for group in group_documents_by_requirement(documents)
+        if "周年庆预约" in group["requirement_title"]
+    )
+
+    result = find_similar_requirements(target_key, documents, limit=2)
+
+    assert len(result["similar"]) == 2
+    assert result["similar"][0]["requirement_title"] == "演唱会预约活动"
+    assert result["similar"][0]["score"] > result["similar"][1]["score"]
+    assert result["similar"][0]["shared_modules"]
+    assert result["similar"][0]["reasons"]

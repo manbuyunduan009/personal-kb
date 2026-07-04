@@ -25,6 +25,7 @@ import {
   getHealth,
   getProductRequirements,
   getRequirementCard,
+  getSimilarRequirements,
   getTraces,
   Health,
   IndexResult,
@@ -35,6 +36,7 @@ import {
   search,
   SearchHit,
   SelfRagStatus,
+  SimilarRequirementsResult,
   submitFeedback
 } from "./api";
 import "./styles.css";
@@ -60,9 +62,10 @@ function App() {
   const [traces, setTraces] = useState<RagTrace[]>([]);
   const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
   const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
+  const [similarRequirements, setSimilarRequirements] = useState<SimilarRequirementsResult | null>(null);
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "card" | "boot" | "">("boot");
+  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "card" | "similar" | "boot" | "">("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
@@ -212,6 +215,22 @@ function App() {
       const card = await getRequirementCard(group.requirement_key);
       setRequirementCard(card);
       setProductMessage(`已生成需求卡片：${group.requirement_title}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleLoadSimilarRequirements(group: RequirementGroup) {
+    setProductMessage("");
+    setSimilarRequirements(null);
+    setLoading("similar");
+    setError("");
+    try {
+      const result = await getSimilarRequirements(group.requirement_key, 3);
+      setSimilarRequirements(result);
+      setProductMessage(`已查找相似需求：${group.requirement_title}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -489,6 +508,10 @@ function App() {
                       {loading === "card" ? <Loader2 className="spin" size={15} /> : <BookOpen size={15} />}
                       查看卡片
                     </button>
+                    <button onClick={() => handleLoadSimilarRequirements(group)} disabled={loading === "similar"}>
+                      {loading === "similar" ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
+                      找相似
+                    </button>
                     <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
                       {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
                       分析变化
@@ -537,6 +560,38 @@ function App() {
                 <ChangeList title="复核建议" items={requirementCard.quality.review_notes} />
                 <ChangeList title="待确认" items={requirementCard.open_questions} />
                 <ChangeList title="下一步" items={requirementCard.next_actions} />
+              </article>
+            )}
+
+            {similarRequirements && (
+              <article className="similar-panel">
+                <h3>相似需求</h3>
+                <p>{similarRequirements.strategy}</p>
+                {similarRequirements.similar.length === 0 && <p className="empty">还没有其他需求可用于相似度比较。</p>}
+                <div className="similar-list">
+                  {similarRequirements.similar.map((item) => (
+                    <article className="similar-item" key={item.requirement_key}>
+                      <header>
+                        <b>{item.requirement_title}</b>
+                        <span>{Math.round(item.score * 100)}%</span>
+                      </header>
+                      <small>
+                        {item.project_name} · {item.document_count} 版 · {item.version_label}
+                      </small>
+                      <p>{item.summary}</p>
+                      {item.shared_modules.length > 0 && (
+                        <div className="version-tags">
+                          {item.shared_modules.map((module) => (
+                            <span key={`${item.requirement_key}-${module}`}>{module}</span>
+                          ))}
+                        </div>
+                      )}
+                      {item.reasons.map((reason) => (
+                        <small key={`${item.requirement_key}-${reason}`}>{reason}</small>
+                      ))}
+                    </article>
+                  ))}
+                </div>
               </article>
             )}
 

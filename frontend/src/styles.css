@@ -545,6 +545,7 @@ h3 {
 }
 
 .requirement-card,
+.similar-panel,
 .change-analysis {
   display: grid;
   gap: 10px;
@@ -554,9 +555,54 @@ h3 {
 }
 
 .requirement-card p,
+.similar-panel p,
 .change-analysis p {
   margin: 0;
   line-height: 1.55;
+}
+
+.similar-list {
+  display: grid;
+  gap: 9px;
+}
+
+.similar-item {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.2);
+  background: #f8f5ec;
+}
+
+.similar-item header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.similar-item header b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.similar-item header span {
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid #20211d;
+  text-align: center;
+  font-size: 12px;
+}
+
+.similar-item small {
+  color: #6b665d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.similar-item p {
+  color: #4a4840;
+  font-size: 12px;
 }
 
 .quality-strip {
