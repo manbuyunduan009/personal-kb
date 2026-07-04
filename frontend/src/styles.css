@@ -276,7 +276,7 @@ h3 {
 }
 
 .preview {
-  margin-top: 0;
+  margin-top: 16px;
 }
 
 .preview pre {
@@ -309,6 +309,20 @@ h3 {
   border-radius: 999px;
   text-align: center;
   font-size: 12px;
+}
+
+.hit small,
+.search-summary {
+  display: block;
+  color: #6b665d;
+  font-size: 12px;
+}
+
+.search-summary {
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(32, 33, 29, 0.25);
+  background: #ebe3d2;
 }
 
 .hit p {

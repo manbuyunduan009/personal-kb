@@ -121,6 +121,15 @@ overlap = 120
 - 回答是否引用来源
 - 是否拒答无依据问题
 
+当前项目已经提供第一版评测脚本：
+
+```powershell
+cd backend
+python scripts\eval_retrieval.py
+```
+
+它先覆盖 5 个问题，用来判断是否命中正确文档。
+
 ## 4. 当前项目的真实状态
 
 已经完成：

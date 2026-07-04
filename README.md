@@ -116,6 +116,18 @@ pytest
 - 文本切片 overlap
 - 重复索引时跳过未变化文件
 
+## 检索评测
+
+后端启动并完成“索引文档”后，可以跑固定问题集：
+
+```powershell
+cd D:\vscode\动效\personal-kb\backend
+.\.venv\Scripts\Activate.ps1
+python scripts\eval_retrieval.py
+```
+
+脚本会检查 5 个问题是否命中预期文档。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索有没有变好。
+
 ## 下一步练习
 
 1. 给 `POST /api/index/run` 增加进度事件。

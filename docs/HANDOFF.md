@@ -101,6 +101,16 @@ http://127.0.0.1:5173
 6. 先点“只检索”，确认右侧能命中文档片段。
 7. 如果配置了 `OPENAI_API_KEY`，再点“AI 回答”，检查回答是否带引用来源。
 
+也可以用固定问题集做命令行评测：
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python scripts\eval_retrieval.py
+```
+
+期望看到 `Summary: 5/5 passed`。
+
 ## 7. 不会提交到 GitHub 的内容
 
 这些内容是本地运行产物，不应该提交：

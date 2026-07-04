@@ -46,6 +46,7 @@ function App() {
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [loading, setLoading] = useState<"index" | "search" | "chat" | "boot" | "">("boot");
   const [error, setError] = useState("");
+  const [lastSearchQuery, setLastSearchQuery] = useState("");
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedId) || documents[0],
@@ -88,6 +89,7 @@ function App() {
     try {
       const data = await search(question);
       setResults(data.results);
+      setLastSearchQuery(question);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -105,6 +107,7 @@ function App() {
       setCitations(data.citations);
       const searchData = await search(question);
       setResults(searchData.results);
+      setLastSearchQuery(question);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -223,6 +226,29 @@ function App() {
             <h2>检索结果</h2>
           </div>
 
+          <div className="search-summary">
+            {lastSearchQuery ? (
+              <span>“{lastSearchQuery}” 命中 {results.length} 条</span>
+            ) : (
+              <span>还没有执行检索</span>
+            )}
+          </div>
+
+          <div className="hit-list">
+            {lastSearchQuery && results.length === 0 && <p className="empty">没有命中文档片段。</p>}
+            {!lastSearchQuery && <p className="empty">检索命中的文档片段会显示在这里。</p>}
+            {results.map((hit) => (
+              <article className="hit" key={`${hit.metadata.source_path}-${hit.metadata.chunk_index}`}>
+                <header>
+                  <b>{hit.metadata.title}</b>
+                  <span>{hit.score.toFixed(2)}</span>
+                </header>
+                <small>切片 {hit.metadata.chunk_index} · {shortPath(hit.metadata.source_path)}</small>
+                <p>{hit.content}</p>
+              </article>
+            ))}
+          </div>
+
           {selectedDocument && (
             <section className="preview">
               <h3>{selectedDocument.title}</h3>
@@ -230,19 +256,6 @@ function App() {
               <pre>{selectedDocument.content_preview}</pre>
             </section>
           )}
-
-          <div className="hit-list">
-            {results.length === 0 && <p className="empty">检索命中的文档片段会显示在这里。</p>}
-            {results.map((hit) => (
-              <article className="hit" key={`${hit.metadata.source_path}-${hit.metadata.chunk_index}`}>
-                <header>
-                  <b>{hit.metadata.title}</b>
-                  <span>{hit.score.toFixed(2)}</span>
-                </header>
-                <p>{hit.content}</p>
-              </article>
-            ))}
-          </div>
         </aside>
       </section>
     </main>
