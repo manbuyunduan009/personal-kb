@@ -147,6 +147,14 @@ python scripts\eval_report.py --save reports\baseline.json
 python scripts\eval_report.py --compare reports\baseline.json --save reports\current.json
 ```
 
+产品专家专项评测：
+
+```powershell
+python scripts\eval_product_expert.py
+```
+
+这个脚本会检查需求分组和需求卡片是否能生成，并统计卡片完整度、缺失章节、待确认问题和下一步动作数量。
+
 ## 下一步练习
 
 1. 给 `POST /api/index/run` 增加进度事件。

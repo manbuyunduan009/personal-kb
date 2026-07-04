@@ -119,8 +119,34 @@
 验收标准：
 
 - 产品专家面板里每个需求都有“查看卡片”按钮。
-- 点击后能看到需求摘要、影响模块、待确认问题和下一步动作。
+- 点击后能看到需求摘要、完整度评分、缺失章节、影响模块、待确认问题和下一步动作。
 - 卡片不调用 AI，不依赖真实 embedding。
+
+### P0-6 产品专家专项评测
+
+状态：已完成。
+
+新增脚本：
+
+```powershell
+backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
+```
+
+评测内容：
+
+- 需求分组数量。
+- 版本数量。
+- 单版本/多版本需求数量。
+- 需求卡片生成成功率。
+- 平均卡片完整度。
+- 卡片质量分布。
+- 最常缺失的章节。
+
+验收标准：
+
+- 后端启动后运行脚本，能输出 `Product Expert Eval`。
+- `api_failure_count = 0`。
+- `card_success_count` 大于 0。
 
 ## 3. 今晚 P1 范围
 
@@ -157,6 +183,10 @@
 - `GET /api/product/requirements/{requirement_key}/card`
 - `POST /api/product/change-analysis`
 
+新增脚本：
+
+- `backend/scripts/eval_product_expert.py`
+
 ### 前端新增能力
 
 新增类型：
@@ -172,6 +202,7 @@
 - 需求分组列表
 - 版本数量和最新文档
 - 需求卡片按钮和卡片详情
+- 卡片质量、完整度和缺失章节提示
 - 变更分析按钮
 - 变更摘要展示
 
@@ -201,18 +232,36 @@ npm run build
 6. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
 7. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
 
+### 产品专家评测
+
+后端启动后运行：
+
+```powershell
+$env:PYTHONPATH='backend'
+backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
+```
+
+预期：
+
+- 输出 `Product Expert Eval`。
+- `requirement_total` 大于 0。
+- `card_success_count` 大于 0。
+- `api_failure_count = 0`。
+
 ### 当前验证结果
 
-- 后端测试：`64 passed`。
+- 后端测试：`68 passed`。
 - 前端构建：`npm run build` 通过。
 - 新增后端模块：`backend/app/product_expert.py`。
 - 新增 API：
   - `GET /api/product/requirements`
   - `GET /api/product/requirements/{requirement_key}/card`
   - `POST /api/product/change-analysis`
+- 新增脚本：`backend/scripts/eval_product_expert.py`
 - 新增前端入口：右侧“产品专家”面板。
 - 临时后端 API 验证：`GET /api/product/requirements` 成功返回 4 个需求分组。
 - 临时后端 API 验证：`GET /api/product/requirements/{requirement_key}/card` 成功返回需求卡片。
+- 临时后端专项评测：`eval_product_expert.py` 通过，`card_success_count: 4/4`，`api_failure_count: 0`。
 
 ## 7. 这一步的价值
 

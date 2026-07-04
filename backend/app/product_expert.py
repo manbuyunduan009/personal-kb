@@ -211,6 +211,7 @@ def build_requirement_card(requirement_key: str, documents: List[Dict[str, objec
         for key, _, keywords in CARD_SECTIONS
     }
     open_questions = build_card_open_questions(sections, field_facts, impact_modules, group)
+    quality = score_requirement_card(sections, field_facts, impact_modules, group)
 
     return {
         "requirement_key": group["requirement_key"],
@@ -223,6 +224,7 @@ def build_requirement_card(requirement_key: str, documents: List[Dict[str, objec
         "sections": sections,
         "field_facts": field_facts[:12],
         "impact_modules": impact_modules,
+        "quality": quality,
         "open_questions": open_questions,
         "next_actions": build_next_actions(sections, impact_modules, group),
         "signals": group.get("signals", []),
@@ -409,6 +411,75 @@ def build_card_summary(
         (target + "；") if target else "",
         modules,
     )
+
+
+def score_requirement_card(
+    sections: Dict[str, List[str]],
+    field_facts: List[Dict[str, str]],
+    impact_modules: List[Dict[str, object]],
+    group: Dict[str, object],
+) -> Dict[str, object]:
+    section_labels = {key: label for key, label, _ in CARD_SECTIONS}
+    required_sections = ["background", "goals", "scope", "rules", "acceptance"]
+    optional_sections = ["users", "risks"]
+    missing_sections = [
+        section_labels[key]
+        for key in required_sections
+        if not sections.get(key)
+    ]
+    weak_sections = [
+        section_labels[key]
+        for key in optional_sections
+        if not sections.get(key)
+    ]
+
+    score = 0.0
+    for key in required_sections:
+        if sections.get(key):
+            score += 0.14
+    for key in optional_sections:
+        if sections.get(key):
+            score += 0.07
+    if field_facts:
+        score += 0.08
+    if impact_modules:
+        score += 0.08
+    if int(group.get("document_count", 0)) >= 2:
+        score += 0.02
+
+    score = round(min(score, 1.0), 2)
+    if score >= 0.72 and not missing_sections:
+        status = "good"
+    elif score >= 0.42:
+        status = "fair"
+    else:
+        status = "needs_review"
+
+    return {
+        "status": status,
+        "completeness_score": score,
+        "missing_sections": missing_sections,
+        "weak_sections": weak_sections,
+        "review_notes": build_card_review_notes(missing_sections, weak_sections, field_facts, group),
+    }
+
+
+def build_card_review_notes(
+    missing_sections: List[str],
+    weak_sections: List[str],
+    field_facts: List[Dict[str, str]],
+    group: Dict[str, object],
+) -> List[str]:
+    notes = []
+    if missing_sections:
+        notes.append("优先补齐：%s。" % "、".join(missing_sections))
+    if weak_sections:
+        notes.append("可继续增强：%s。" % "、".join(weak_sections))
+    if not field_facts:
+        notes.append("建议在文档中补充结构化字段，便于后续版本对比和影响分析。")
+    if int(group.get("document_count", 0)) < 2:
+        notes.append("当前缺少历史版本，暂时只能做单版本摘要，不能做趋势判断。")
+    return notes
 
 
 def build_card_open_questions(

@@ -162,6 +162,13 @@ export type RequirementCard = {
   sections: Record<string, string[]>;
   field_facts: Array<{ label: string; value: string; scope: string }>;
   impact_modules: Array<{ label: string; matched_keywords: string[] }>;
+  quality: {
+    status: "good" | "fair" | "needs_review" | string;
+    completeness_score: number;
+    missing_sections: string[];
+    weak_sections: string[];
+    review_notes: string[];
+  };
   open_questions: string[];
   next_actions: string[];
   signals: string[];

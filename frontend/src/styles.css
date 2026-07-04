@@ -559,6 +559,29 @@ h3 {
   line-height: 1.55;
 }
 
+.quality-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(32, 33, 29, 0.25);
+  background: #ebe3d2;
+  font-size: 12px;
+}
+
+.quality-strip.good {
+  background: #d8e9c6;
+}
+
+.quality-strip.fair {
+  background: #efe1b9;
+}
+
+.quality-strip.needs_review {
+  background: #f4d5cd;
+}
+
 .change-list,
 .field-change-list {
   display: grid;

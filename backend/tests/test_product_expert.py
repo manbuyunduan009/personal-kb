@@ -137,5 +137,30 @@ def test_build_requirement_card_extracts_product_sections(tmp_path: Path):
     assert card["sections"]["scope"]
     assert card["sections"]["risks"]
     assert card["impact_modules"]
+    assert card["quality"]["status"] in {"good", "fair"}
+    assert card["quality"]["completeness_score"] >= 0.5
     assert any("历史版本" in question for question in card["open_questions"])
     assert card["next_actions"]
+
+
+def test_requirement_card_quality_flags_missing_sections(tmp_path: Path):
+    path = tmp_path / "thin.md"
+    path.write_text("只有一句很短的需求说明。", encoding="utf-8")
+    documents = [
+        {
+            "id": "doc-1",
+            "title": "薄弱需求.md",
+            "source_path": str(path),
+            "file_type": ".md",
+            "content_preview": "只有一句很短的需求说明。",
+            "last_modified": 100,
+            "indexed_at": "2026-07-01T00:00:00Z",
+        }
+    ]
+    requirement_key = group_documents_by_requirement(documents)[0]["requirement_key"]
+
+    card = build_requirement_card(requirement_key, documents)
+
+    assert card["quality"]["status"] == "needs_review"
+    assert "目标" in card["quality"]["missing_sections"]
+    assert card["quality"]["review_notes"]

@@ -502,11 +502,22 @@ function App() {
               <article className="requirement-card">
                 <h3>需求卡片</h3>
                 <p>{requirementCard.summary}</p>
+                <div className={`quality-strip ${requirementCard.quality.status}`}>
+                  <b>{cardQualityLabel(requirementCard.quality.status)}</b>
+                  <span>完整度 {Math.round(requirementCard.quality.completeness_score * 100)}%</span>
+                </div>
                 <div className="keyword-tags">
                   {requirementCard.impact_modules.map((module) => (
                     <span key={module.label}>{module.label}</span>
                   ))}
                 </div>
+                {requirementCard.quality.missing_sections.length > 0 && (
+                  <div className="version-tags">
+                    {requirementCard.quality.missing_sections.map((section) => (
+                      <span key={`missing-${section}`}>缺 {section}</span>
+                    ))}
+                  </div>
+                )}
                 <CardSection title="背景" items={requirementCard.sections.background || []} />
                 <CardSection title="目标" items={requirementCard.sections.goals || []} />
                 <CardSection title="用户/角色" items={requirementCard.sections.users || []} />
@@ -523,6 +534,7 @@ function App() {
                     ))}
                   </div>
                 )}
+                <ChangeList title="复核建议" items={requirementCard.quality.review_notes} />
                 <ChangeList title="待确认" items={requirementCard.open_questions} />
                 <ChangeList title="下一步" items={requirementCard.next_actions} />
               </article>
@@ -624,6 +636,13 @@ function citationCheckStatusLabel(status: CitationCheck["status"] | string) {
 
 function isCitationCheckRisk(status: CitationCheck["status"] | string) {
   return status === "warning" || status === "unsupported";
+}
+
+function cardQualityLabel(status: string) {
+  if (status === "good") return "卡片完整";
+  if (status === "fair") return "需要复核";
+  if (status === "needs_review") return "信息不足";
+  return "未评估";
 }
 
 function FeedbackActions({
