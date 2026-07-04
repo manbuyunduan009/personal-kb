@@ -334,6 +334,306 @@ def build_requirement_timeline(requirement_key: str, documents: List[Dict[str, o
     }
 
 
+def build_solution_recommendation(requirement_key: str, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    card = build_requirement_card(requirement_key, documents)
+    similar = find_similar_requirements(requirement_key, documents, limit=3)
+    timeline = build_requirement_timeline(requirement_key, documents)
+    confidence = assess_recommendation_confidence(card, similar, timeline)
+    options = build_solution_options(card, similar, timeline)
+    recommended_option = max(options, key=lambda item: float(item["score"])) if options else {}
+
+    return {
+        "requirement": {
+            "requirement_key": card["requirement_key"],
+            "requirement_title": card["requirement_title"],
+            "project_name": card["project_name"],
+            "summary": card["summary"],
+        },
+        "confidence": confidence,
+        "recommended_option": recommended_option,
+        "options": options,
+        "decision_factors": build_decision_factors(card, similar, timeline),
+        "risks": build_recommendation_risks(card, similar, timeline),
+        "acceptance_checklist": build_acceptance_checklist(card, timeline),
+        "open_questions": build_recommendation_open_questions(card, timeline),
+        "next_steps": build_recommendation_next_steps(card, similar, timeline),
+        "evidence_refs": build_recommendation_evidence_refs(card, similar, timeline, documents),
+        "strategy": "规则版方案推荐：当前需求卡片定范围，相似历史需求提供复用参考，演进时间线提示不稳定点；不调用 LLM。",
+        "limitations": [
+            "v0 是方案初稿，不替代产品评审结论。",
+            "相似需求和时间线都依赖当前已索引资料，资料不足时建议会偏保守。",
+            "后续可接 LLM 做表达润色和多方案对比，但关键依据仍应来自文档。",
+        ],
+    }
+
+
+def assess_recommendation_confidence(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+) -> Dict[str, object]:
+    quality = card.get("quality", {}) if isinstance(card.get("quality", {}), dict) else {}
+    card_score = float(quality.get("completeness_score", 0.0) or 0.0)
+    similar_items = similar.get("similar", []) if isinstance(similar.get("similar", []), list) else []
+    top_similar_score = float(similar_items[0].get("score", 0.0) or 0.0) if similar_items else 0.0
+    version_count = len(timeline.get("versions", [])) if isinstance(timeline.get("versions", []), list) else 0
+    score = round(
+        min(
+            0.18
+            + card_score * 0.38
+            + min(top_similar_score, 0.75) * 0.28
+            + min(version_count / 3, 1.0) * 0.16,
+            1.0,
+        ),
+        2,
+    )
+    if score >= 0.72:
+        status = "high"
+    elif score >= 0.48:
+        status = "medium"
+    else:
+        status = "low"
+    return {
+        "status": status,
+        "score": score,
+        "reasons": [
+            "需求卡片完整度 %.0f%%" % (card_score * 100),
+            "最高相似需求 %.0f%%" % (top_similar_score * 100),
+            "已识别历史版本 %s 个" % version_count,
+        ],
+    }
+
+
+def build_solution_options(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[Dict[str, object]]:
+    similar_items = similar.get("similar", []) if isinstance(similar.get("similar", []), list) else []
+    top_similar_score = float(similar_items[0].get("score", 0.0) or 0.0) if similar_items else 0.0
+    change_events = timeline.get("change_events", []) if isinstance(timeline.get("change_events", []), list) else []
+    high_risk_count = sum(1 for event in change_events if isinstance(event, dict) and event.get("risk_level") == "high")
+    module_count = len(module_labels(card))
+    card_quality = card.get("quality", {}) if isinstance(card.get("quality", {}), dict) else {}
+    completeness = float(card_quality.get("completeness_score", 0.0) or 0.0)
+
+    reuse_score = round(min(0.35 + top_similar_score * 0.45 + min(module_count, 4) * 0.03, 1.0), 2)
+    adjust_score = round(min(0.48 + completeness * 0.22 + (0.08 if top_similar_score >= 0.25 else 0.0), 1.0), 2)
+    redesign_score = round(min(0.28 + high_risk_count * 0.18 + (0.18 if top_similar_score < 0.2 else 0.0), 1.0), 2)
+
+    return sorted(
+        [
+            {
+                "name": "复用历史方案",
+                "score": reuse_score,
+                "summary": "优先参考相似历史需求的成熟规则，再按当前需求做少量补充。",
+                "pros": ["实现路径更稳", "便于复用已有验收经验", "适合相似需求分较高的场景"],
+                "cons": ["可能继承历史方案的旧限制", "如果当前需求差异大，需要额外评审"],
+                "when_to_use": "相似需求分较高，且当前需求没有明显高风险变更时。",
+            },
+            {
+                "name": "轻量调整",
+                "score": adjust_score,
+                "summary": "保留当前需求主线，只对受影响模块补规则、异常态和验收点。",
+                "pros": ["成本可控", "适合版本持续迭代", "便于快速推进研发和验收"],
+                "cons": ["需要产品持续复核边界条件", "容易漏掉跨模块影响"],
+                "when_to_use": "需求卡片较完整，但历史相似资料还不够强时。",
+            },
+            {
+                "name": "重新设计",
+                "score": redesign_score,
+                "summary": "把当前需求作为新方案重新梳理，重新定义范围、流程、规则和验收口径。",
+                "pros": ["适合高风险或历史方案不适配的需求", "能清理旧规则包袱"],
+                "cons": ["研发和沟通成本最高", "需要更完整的评审和排期"],
+                "when_to_use": "历史相似度低，或时间线显示高风险变更反复出现时。",
+            },
+        ],
+        key=lambda item: float(item["score"]),
+        reverse=True,
+    )
+
+
+def build_decision_factors(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[Dict[str, object]]:
+    factors = []
+    quality = card.get("quality", {}) if isinstance(card.get("quality", {}), dict) else {}
+    factors.append(
+        {
+            "label": "当前需求完整度",
+            "detail": "需求卡片完整度 %.0f%%，状态：%s。"
+            % (float(quality.get("completeness_score", 0.0) or 0.0) * 100, quality.get("status", "unknown")),
+        }
+    )
+    similar_items = similar.get("similar", []) if isinstance(similar.get("similar", []), list) else []
+    if similar_items:
+        top = similar_items[0]
+        factors.append(
+            {
+                "label": "历史相似参考",
+                "detail": "最相似需求是“%s”，相似分 %.0f%%。"
+                % (top.get("requirement_title", ""), float(top.get("score", 0.0) or 0.0) * 100),
+            }
+        )
+    else:
+        factors.append({"label": "历史相似参考", "detail": "当前没有可用相似需求，建议偏保守推进。"})
+
+    change_events = timeline.get("change_events", []) if isinstance(timeline.get("change_events", []), list) else []
+    factors.append(
+        {
+            "label": "需求演进稳定性",
+            "detail": "识别到 %s 个版本、%s 次版本间变更。"
+            % (len(timeline.get("versions", [])), len(change_events)),
+        }
+    )
+    modules = "、".join(sorted(module_labels(card))) or "未识别"
+    factors.append({"label": "影响模块", "detail": "当前可能涉及：%s。" % modules})
+    return factors
+
+
+def build_recommendation_risks(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[str]:
+    risks = []
+    sections = card.get("sections", {}) if isinstance(card.get("sections", {}), dict) else {}
+    risks.extend(str(item) for item in sections.get("risks", []) if item)
+    similar_items = similar.get("similar", []) if isinstance(similar.get("similar", []), list) else []
+    top_score = float(similar_items[0].get("score", 0.0) or 0.0) if similar_items else 0.0
+    if top_score < 0.3:
+        risks.append("历史相似需求分偏低，不能直接套用历史方案。")
+    for event in timeline.get("change_events", []):
+        if isinstance(event, dict) and event.get("risk_level") in {"high", "medium"}:
+            risks.append("%s → %s 存在%s变更：%s" % (
+                event.get("from_version", ""),
+                event.get("to_version", ""),
+                "高风险" if event.get("risk_level") == "high" else "中风险",
+                "；".join(event.get("risk_reasons", [])[:2]),
+            ))
+    if not risks:
+        risks.append("当前未识别明显高风险，但仍需要核对原始需求和验收口径。")
+    return _unique_strings(risks)[:8]
+
+
+def build_acceptance_checklist(
+    card: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[str]:
+    checklist = []
+    sections = card.get("sections", {}) if isinstance(card.get("sections", {}), dict) else {}
+    checklist.extend(str(item) for item in sections.get("acceptance", []) if item)
+    labels = module_labels(card)
+    if "页面/入口" in labels:
+        checklist.append("检查入口、页面展示、空态和跳转路径。")
+    if "权限/登录" in labels:
+        checklist.append("检查未登录、授权失败、免登失效和切环境场景。")
+    if "接口/后端" in labels:
+        checklist.append("检查接口字段、默认值、异常返回和前后端兜底。")
+    if "业务规则" in labels:
+        checklist.append("检查边界条件、重复操作、资格限制和规则冲突。")
+    if "数据统计" in labels:
+        checklist.append("检查埋点、日志、报表口径和运营统计。")
+    if timeline.get("change_events"):
+        checklist.append("把最新一次版本变更加入回归验收清单。")
+    return _unique_strings(checklist)[:10]
+
+
+def build_recommendation_next_steps(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[str]:
+    steps = [
+        "先用原始文档核对需求卡片，确认背景、目标、范围和规则没有抽错。",
+        "把推荐方案当成评审初稿，拿去和产品、研发、测试对齐。",
+    ]
+    if similar.get("similar"):
+        steps.append("优先打开最相似历史需求，确认哪些规则可以复用、哪些不能复用。")
+    else:
+        steps.append("补充更多历史资料后再判断是否可复用历史方案。")
+    if timeline.get("change_events"):
+        steps.append("把时间线里的中高风险变更转成专项验收项。")
+    else:
+        steps.append("当前缺少多版本历史，先不要过度推断长期趋势。")
+    if card.get("next_actions"):
+        steps.extend(str(item) for item in card.get("next_actions", [])[:3])
+    return _unique_strings(steps)[:8]
+
+
+def build_recommendation_open_questions(
+    card: Dict[str, object],
+    timeline: Dict[str, object],
+) -> List[str]:
+    questions = list(card.get("open_questions", [])) if isinstance(card.get("open_questions", []), list) else []
+    for event in timeline.get("change_events", []):
+        if not isinstance(event, dict):
+            continue
+        event_questions = event.get("open_questions", [])
+        if isinstance(event_questions, list):
+            questions.extend(str(question) for question in event_questions if question)
+    return _unique_strings(questions)[:10]
+
+
+def build_recommendation_evidence_refs(
+    card: Dict[str, object],
+    similar: Dict[str, object],
+    timeline: Dict[str, object],
+    documents: List[Dict[str, object]],
+) -> List[Dict[str, object]]:
+    refs = []
+    source_document = card.get("source_document", {})
+    if isinstance(source_document, dict):
+        refs.append({"kind": "current_requirement", "title": source_document.get("title", ""), "source_path": source_document.get("source_path", "")})
+
+    for item in similar.get("similar", [])[:3]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            similar_card = build_requirement_card(str(item.get("requirement_key", "")), documents)
+        except KeyError:
+            continue
+        similar_document = similar_card.get("source_document", {})
+        if isinstance(similar_document, dict):
+            refs.append(
+                {
+                    "kind": "similar_requirement",
+                    "title": similar_document.get("title", ""),
+                    "source_path": similar_document.get("source_path", ""),
+                    "score": item.get("score", 0.0),
+                }
+            )
+
+    versions = timeline.get("versions", []) if isinstance(timeline.get("versions", []), list) else []
+    for version in versions[-2:]:
+        if isinstance(version, dict):
+            document = version.get("document", {})
+            if isinstance(document, dict):
+                refs.append(
+                    {
+                        "kind": "timeline_version",
+                        "title": document.get("title", ""),
+                        "source_path": document.get("source_path", ""),
+                        "version_label": version.get("version_label", ""),
+                    }
+                )
+    return unique_evidence_refs(refs)[:8]
+
+
+def unique_evidence_refs(refs: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    unique = []
+    seen = set()
+    for ref in refs:
+        key = (str(ref.get("kind", "")), str(ref.get("source_path", "")))
+        if key in seen or not key[1]:
+            continue
+        seen.add(key)
+        unique.append(ref)
+    return unique
+
+
 def resolve_version_document(
     version: Dict[str, object],
     documents_by_id: Dict[str, Dict[str, object]],

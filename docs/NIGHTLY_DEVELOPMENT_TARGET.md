@@ -199,6 +199,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `build_requirement_card(requirement_key, documents)`
 - `find_similar_requirements(requirement_key, documents, limit)`
 - `build_requirement_timeline(requirement_key, documents)`
+- `build_solution_recommendation(requirement_key, documents)`
 - `analyze_requirement_change(old_document, new_document)`
 
 新增 API：
@@ -207,6 +208,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `GET /api/product/requirements/{requirement_key}/card`
 - `GET /api/product/requirements/{requirement_key}/similar`
 - `GET /api/product/requirements/{requirement_key}/timeline`
+- `GET /api/product/requirements/{requirement_key}/recommendation`
 - `POST /api/product/change-analysis`
 
 新增脚本：
@@ -222,6 +224,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `RequirementCard`
 - `SimilarRequirementsResult`
 - `RequirementTimeline`
+- `SolutionRecommendation`
 - `ChangeAnalysis`
 
 新增 UI：
@@ -233,6 +236,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 卡片质量、完整度和缺失章节提示
 - 相似需求按钮和相似结果列表
 - 需求演进按钮和时间线结果列表
+- 方案建议按钮和多方案对比
 - 变更分析按钮
 - 变更摘要展示
 
@@ -261,8 +265,9 @@ npm run build
 5. 点击“查看卡片”，确认能看到摘要、影响模块、待确认问题和下一步。
 6. 点击“找相似”，确认能看到相似需求、相似分、共同模块或相似原因。
 7. 点击“看演进”，确认能看到版本时间线、变更次数、风险等级和建议动作。
-8. 如果某个需求只有一个版本，确认页面提示“当前只有一个版本，先补历史资料后才能看演进”。
-9. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
+8. 点击“出方案”，确认能看到推荐方案、备选方案、风险、验收清单和证据来源。
+9. 如果某个需求只有一个版本，确认页面提示“当前只有一个版本，先补历史资料后才能看演进”。
+10. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
 
 ### 产品专家评测
 
@@ -282,7 +287,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 
 ### 当前验证结果
 
-- 后端测试：`72 passed`。
+- 后端测试：`74 passed`。
 - 前端构建：`npm run build` 通过。
 - 新增后端模块：`backend/app/product_expert.py`。
 - 新增 API：
@@ -290,6 +295,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
   - `GET /api/product/requirements/{requirement_key}/card`
   - `GET /api/product/requirements/{requirement_key}/similar`
   - `GET /api/product/requirements/{requirement_key}/timeline`
+  - `GET /api/product/requirements/{requirement_key}/recommendation`
   - `POST /api/product/change-analysis`
 - 新增脚本：`backend/scripts/eval_product_expert.py`
 - 新增前端入口：右侧“产品专家”面板。
@@ -298,6 +304,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 临时后端专项评测：`eval_product_expert.py` 通过，`card_success_count: 4/4`，`api_failure_count: 0`。
 - 临时后端专项评测：相似需求通过，`similar_success_count: 4`，`avg_similar_count: 3.00`，`avg_top_similar_score: 0.42`。
 - 临时后端专项评测：需求演进时间线通过，`timeline_success_count: 4`，`avg_timeline_versions: 1.00`，`avg_change_events: 0.00`，`avg_timeline_recommendations: 2.00`。
+- 临时后端专项评测：方案推荐通过，`recommendation_success_count: 4`，`avg_recommendation_confidence: 0.73`，`avg_recommendation_options: 3.00`，`avg_recommendation_evidence_refs: 5.00`。
 
 ### P0-8 已完成：需求演进时间线 v1
 
@@ -326,6 +333,39 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - v1 仍是文本 diff，不理解复杂 Word/Excel 版式。
 - 版本归并依赖文件名、标题和字段抽取，后续需要人工修正入口。
 - 当前只是产品判断入口，不替代最终人工确认。
+
+### P0-9 已完成：方案推荐助手 v0
+
+做法：
+
+1. 读取当前需求卡片，得到背景、目标、范围、规则、风险、验收点和影响模块。
+2. 读取相似历史需求，得到可复用的历史参考和相似度。
+3. 读取需求演进时间线，得到版本数量、变更次数、反复变化模块和风险点。
+4. 用规则生成 3 个候选方案：
+   - 复用历史方案
+   - 轻量调整
+   - 重新设计
+5. 根据需求卡片完整度、最高相似分、历史版本数量和风险信息计算置信度。
+6. 输出推荐方案、备选方案、决策因素、风险、验收清单、待确认问题、下一步和证据来源。
+
+为什么排在时间线之后：
+
+- 方案推荐需要知道当前需求是什么。
+- 还要知道历史上有没有类似需求。
+- 还要知道这个需求自己是否稳定、哪些模块反复变化。
+- 所以它应该建立在“需求卡片 + 相似需求 + 演进时间线”之上。
+
+优点：
+
+- 不调用 LLM，结果可解释、可测试。
+- 能把资料整理成产品评审初稿。
+- 能明确展示证据来源，避免“凭空建议”。
+
+限制：
+
+- v0 不理解深层业务取舍，只做结构化初稿。
+- 当前方案分数是规则分，不是最终产品决策。
+- 后续接 LLM 时，只建议用于润色和补充表达，不应该绕过证据链。
 
 ## 7. 这一步的价值
 

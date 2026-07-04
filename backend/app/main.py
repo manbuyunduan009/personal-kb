@@ -11,6 +11,7 @@ from .product_expert import (
     analyze_requirement_change,
     build_requirement_card,
     build_requirement_timeline,
+    build_solution_recommendation,
     find_similar_requirements,
     group_documents_by_requirement,
 )
@@ -201,6 +202,16 @@ def get_product_requirement_timeline(requirement_key: str):
     documents = repository.list_documents()
     try:
         return build_requirement_timeline(requirement_key, documents)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Requirement not found") from exc
+
+
+@app.get("/api/product/requirements/{requirement_key}/recommendation")
+def get_product_solution_recommendation(requirement_key: str):
+    _, repository = repository_service()
+    documents = repository.list_documents()
+    try:
+        return build_solution_recommendation(requirement_key, documents)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Requirement not found") from exc
 

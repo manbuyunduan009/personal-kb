@@ -1,5 +1,6 @@
 from scripts.eval_product_expert import (
     evaluate_card,
+    evaluate_recommendation,
     evaluate_requirements,
     evaluate_similar,
     evaluate_timeline,
@@ -85,6 +86,25 @@ def test_evaluate_timeline_extracts_change_metrics():
     assert record["recommendation_count"] == 1
 
 
+def test_evaluate_recommendation_extracts_solution_metrics():
+    requirement = {"requirement_key": "a", "requirement_title": "需求A"}
+    response = {
+        "confidence": {"status": "medium", "score": 0.66},
+        "options": [{"name": "轻量调整"}, {"name": "复用历史方案"}],
+        "recommended_option": {"name": "轻量调整"},
+        "evidence_refs": [{"source_path": "a.md"}],
+        "acceptance_checklist": ["检查授权失败"],
+    }
+
+    record = evaluate_recommendation(requirement, response, latency_ms=11)
+
+    assert record["ok"] is True
+    assert record["confidence_score"] == 0.66
+    assert record["option_count"] == 2
+    assert record["recommended_option"] == "轻量调整"
+    assert record["evidence_ref_count"] == 1
+
+
 def test_summarize_and_format_text_report():
     requirement_record = {
         "ok": True,
@@ -136,8 +156,18 @@ def test_summarize_and_format_text_report():
             "trend_summary": "识别到 2 个版本、1 次变更。",
         }
     ]
+    recommendation_records = [
+        {
+            "ok": True,
+            "confidence_score": 0.7,
+            "option_count": 3,
+            "evidence_ref_count": 2,
+            "requirement_title": "需求A",
+            "recommended_option": "轻量调整",
+        }
+    ]
 
-    summary = summarize(requirement_record, card_records, similar_records, timeline_records)
+    summary = summarize(requirement_record, card_records, similar_records, timeline_records, recommendation_records)
 
     assert summary["avg_card_completeness_score"] == 0.5
     assert summary["quality_status_distribution"] == {"good": 1, "needs_review": 1}
@@ -147,6 +177,8 @@ def test_summarize_and_format_text_report():
     assert summary["timeline_success_count"] == 1
     assert summary["avg_timeline_versions"] == 2.0
     assert summary["timeline_high_risk_count"] == 1
+    assert summary["recommendation_success_count"] == 1
+    assert summary["avg_recommendation_confidence"] == 0.7
 
     text = format_text_report(
         {
@@ -156,6 +188,7 @@ def test_summarize_and_format_text_report():
             "cards": card_records,
             "similar": similar_records,
             "timelines": timeline_records,
+            "recommendations": recommendation_records,
         }
     )
 
@@ -163,3 +196,4 @@ def test_summarize_and_format_text_report():
     assert "avg_card_completeness_score: 0.50" in text
     assert "Similar requirements:" in text
     assert "Requirement timelines:" in text
+    assert "Solution recommendations:" in text

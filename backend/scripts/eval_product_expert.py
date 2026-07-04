@@ -122,6 +122,35 @@ def evaluate_timeline(requirement: Dict[str, Any], response: Optional[Dict[str, 
     }
 
 
+def evaluate_recommendation(
+    requirement: Dict[str, Any],
+    response: Optional[Dict[str, Any]],
+    latency_ms: int,
+    error: str = "",
+):
+    response = response if isinstance(response, dict) else {}
+    confidence = response.get("confidence", {}) if isinstance(response.get("confidence", {}), dict) else {}
+    options = response.get("options", []) if isinstance(response.get("options", []), list) else []
+    evidence_refs = response.get("evidence_refs", []) if isinstance(response.get("evidence_refs", []), list) else []
+    checklist = response.get("acceptance_checklist", [])
+    checklist = checklist if isinstance(checklist, list) else []
+    recommended_option = response.get("recommended_option", {})
+    recommended_option = recommended_option if isinstance(recommended_option, dict) else {}
+    return {
+        "ok": not error,
+        "error": error,
+        "latency_ms": latency_ms,
+        "requirement_key": requirement.get("requirement_key", ""),
+        "requirement_title": requirement.get("requirement_title", ""),
+        "confidence_status": str(confidence.get("status", "unknown")),
+        "confidence_score": float(confidence.get("score", 0.0) or 0.0),
+        "option_count": len(options),
+        "recommended_option": str(recommended_option.get("name", "")),
+        "evidence_ref_count": len(evidence_refs),
+        "acceptance_check_count": len(checklist),
+    }
+
+
 def average(values: List[float]) -> float:
     if not values:
         return 0.0
@@ -133,12 +162,15 @@ def summarize(
     card_records: List[Dict[str, Any]],
     similar_records: Optional[List[Dict[str, Any]]] = None,
     timeline_records: Optional[List[Dict[str, Any]]] = None,
+    recommendation_records: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     similar_records = similar_records or []
     timeline_records = timeline_records or []
+    recommendation_records = recommendation_records or []
     successful_cards = [record for record in card_records if record.get("ok")]
     successful_similar = [record for record in similar_records if record.get("ok")]
     successful_timelines = [record for record in timeline_records if record.get("ok")]
+    successful_recommendations = [record for record in recommendation_records if record.get("ok")]
     status_counts = Counter(str(record.get("quality_status", "unknown") or "unknown") for record in successful_cards)
     missing_counts: Counter = Counter()
     weak_counts: Counter = Counter()
@@ -171,10 +203,22 @@ def summarize(
         "avg_timeline_recommendations": average(
             [float(record["recommendation_count"]) for record in successful_timelines]
         ),
+        "recommendation_success_count": len(successful_recommendations),
+        "recommendation_failure_count": len(recommendation_records) - len(successful_recommendations),
+        "avg_recommendation_confidence": average(
+            [float(record["confidence_score"]) for record in successful_recommendations]
+        ),
+        "avg_recommendation_options": average(
+            [float(record["option_count"]) for record in successful_recommendations]
+        ),
+        "avg_recommendation_evidence_refs": average(
+            [float(record["evidence_ref_count"]) for record in successful_recommendations]
+        ),
         "api_failure_count": (0 if requirement_record.get("ok") else 1)
         + sum(1 for record in card_records if not record.get("ok"))
         + sum(1 for record in similar_records if not record.get("ok"))
-        + sum(1 for record in timeline_records if not record.get("ok")),
+        + sum(1 for record in timeline_records if not record.get("ok"))
+        + sum(1 for record in recommendation_records if not record.get("ok")),
     }
 
 
@@ -208,11 +252,21 @@ def build_report(base_url: str, limit: int) -> Dict[str, Any]:
             "/api/product/requirements/%s/timeline" % key,
         )
         timeline_records.append(evaluate_timeline(requirement, response, timeline_latency_ms, timeline_error))
+    recommendation_records = []
+    for requirement in requirements:
+        key = urllib.parse.quote(str(requirement.get("requirement_key", "")), safe="")
+        response, recommendation_latency_ms, recommendation_error = request_json(
+            base_url,
+            "/api/product/requirements/%s/recommendation" % key,
+        )
+        recommendation_records.append(
+            evaluate_recommendation(requirement, response, recommendation_latency_ms, recommendation_error)
+        )
 
     return {
         "base_url": base_url,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "summary": summarize(requirement_record, card_records, similar_records, timeline_records),
+        "summary": summarize(requirement_record, card_records, similar_records, timeline_records, recommendation_records),
         "requirements": {
             key: value
             for key, value in requirement_record.items()
@@ -221,6 +275,7 @@ def build_report(base_url: str, limit: int) -> Dict[str, Any]:
         "cards": card_records,
         "similar": similar_records,
         "timelines": timeline_records,
+        "recommendations": recommendation_records,
     }
 
 
@@ -265,6 +320,10 @@ def format_text_report(report: Dict[str, Any]) -> str:
         "avg_change_events: %.2f" % summary["avg_change_events"],
         "timeline_high_risk_count: %s" % summary["timeline_high_risk_count"],
         "avg_timeline_recommendations: %.2f" % summary["avg_timeline_recommendations"],
+        "recommendation_success_count: %s" % summary["recommendation_success_count"],
+        "avg_recommendation_confidence: %.2f" % summary["avg_recommendation_confidence"],
+        "avg_recommendation_options: %.2f" % summary["avg_recommendation_options"],
+        "avg_recommendation_evidence_refs: %.2f" % summary["avg_recommendation_evidence_refs"],
         "api_failure_count: %s" % summary["api_failure_count"],
         "",
         "Cards:",
@@ -314,6 +373,22 @@ def format_text_report(report: Dict[str, Any]) -> str:
         )
         if record.get("trend_summary"):
             lines.append("  %s" % record["trend_summary"])
+        if record.get("error"):
+            lines.append("  error: %s" % record["error"])
+    lines.extend(["", "Solution recommendations:"])
+    for record in report.get("recommendations", []):
+        status = "PASS" if record.get("ok") else "API_ERROR"
+        lines.append(
+            "[%s] %s | option=%s | confidence=%.2f | options=%s | refs=%s"
+            % (
+                status,
+                record.get("requirement_title", ""),
+                record.get("recommended_option", "") or "none",
+                record.get("confidence_score", 0.0),
+                record.get("option_count", 0),
+                record.get("evidence_ref_count", 0),
+            )
+        )
         if record.get("error"):
             lines.append("  error: %s" % record["error"])
     return "\n".join(lines)

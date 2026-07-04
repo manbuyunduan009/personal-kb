@@ -6,6 +6,7 @@ import {
   Database,
   FileText,
   GitBranch,
+  Lightbulb,
   Loader2,
   MessageSquareText,
   Play,
@@ -28,6 +29,7 @@ import {
   getRequirementCard,
   getRequirementTimeline,
   getSimilarRequirements,
+  getSolutionRecommendation,
   getTraces,
   Health,
   IndexResult,
@@ -40,6 +42,7 @@ import {
   SearchHit,
   SelfRagStatus,
   SimilarRequirementsResult,
+  SolutionRecommendation,
   submitFeedback
 } from "./api";
 import "./styles.css";
@@ -67,10 +70,11 @@ function App() {
   const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
   const [similarRequirements, setSimilarRequirements] = useState<SimilarRequirementsResult | null>(null);
   const [requirementTimeline, setRequirementTimeline] = useState<RequirementTimeline | null>(null);
+  const [solutionRecommendation, setSolutionRecommendation] = useState<SolutionRecommendation | null>(null);
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
   const [loading, setLoading] = useState<
-    "index" | "search" | "chat" | "product" | "card" | "similar" | "timeline" | "boot" | ""
+    "index" | "search" | "chat" | "product" | "card" | "similar" | "timeline" | "recommendation" | "boot" | ""
   >("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
@@ -253,6 +257,22 @@ function App() {
       const result = await getRequirementTimeline(group.requirement_key);
       setRequirementTimeline(result);
       setProductMessage(`已生成需求演进时间线：${group.requirement_title}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleLoadSolutionRecommendation(group: RequirementGroup) {
+    setProductMessage("");
+    setSolutionRecommendation(null);
+    setLoading("recommendation");
+    setError("");
+    try {
+      const result = await getSolutionRecommendation(group.requirement_key);
+      setSolutionRecommendation(result);
+      setProductMessage(`已生成方案建议：${group.requirement_title}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -538,6 +558,10 @@ function App() {
                       {loading === "timeline" ? <Loader2 className="spin" size={15} /> : <GitBranch size={15} />}
                       看演进
                     </button>
+                    <button onClick={() => handleLoadSolutionRecommendation(group)} disabled={loading === "recommendation"}>
+                      {loading === "recommendation" ? <Loader2 className="spin" size={15} /> : <Lightbulb size={15} />}
+                      出方案
+                    </button>
                     <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
                       {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
                       分析变化
@@ -686,6 +710,66 @@ function App() {
               </article>
             )}
 
+            {solutionRecommendation && (
+              <article className="recommendation-panel">
+                <h3>方案建议</h3>
+                <p>{solutionRecommendation.strategy}</p>
+                <div className={`quality-strip ${solutionRecommendation.confidence.status}`}>
+                  <b>{confidenceLabel(solutionRecommendation.confidence.status)}</b>
+                  <span>置信度 {Math.round(solutionRecommendation.confidence.score * 100)}%</span>
+                </div>
+                <ChangeList title="置信依据" items={solutionRecommendation.confidence.reasons} />
+
+                {solutionRecommendation.recommended_option && (
+                  <article className="recommended-option">
+                    <header>
+                      <b>{solutionRecommendation.recommended_option.name}</b>
+                      <span>{Math.round(solutionRecommendation.recommended_option.score * 100)}%</span>
+                    </header>
+                    <p>{solutionRecommendation.recommended_option.summary}</p>
+                    <small>{solutionRecommendation.recommended_option.when_to_use}</small>
+                  </article>
+                )}
+
+                <div className="option-list">
+                  {solutionRecommendation.options.map((option) => (
+                    <article className="option-item" key={option.name}>
+                      <header>
+                        <b>{option.name}</b>
+                        <span>{Math.round(option.score * 100)}%</span>
+                      </header>
+                      <p>{option.summary}</p>
+                      <ChangeList title="优点" items={option.pros} />
+                      <ChangeList title="限制" items={option.cons} />
+                    </article>
+                  ))}
+                </div>
+
+                <div className="field-change-list">
+                  {solutionRecommendation.decision_factors.map((factor) => (
+                    <span key={factor.label}>
+                      {factor.label}: {factor.detail}
+                    </span>
+                  ))}
+                </div>
+                <ChangeList title="风险" items={solutionRecommendation.risks} />
+                <ChangeList title="验收清单" items={solutionRecommendation.acceptance_checklist} />
+                <ChangeList title="待确认" items={solutionRecommendation.open_questions} />
+                <ChangeList title="下一步" items={solutionRecommendation.next_steps} />
+
+                {solutionRecommendation.evidence_refs.length > 0 && (
+                  <div className="evidence-list">
+                    <b>证据来源</b>
+                    {solutionRecommendation.evidence_refs.map((ref) => (
+                      <span key={`${ref.kind}-${ref.source_path}`}>
+                        {evidenceKindLabel(ref.kind)} · {ref.title}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </article>
+            )}
+
             {changeAnalysis && (
               <article className="change-analysis">
                 <h3>变更分析</h3>
@@ -797,6 +881,20 @@ function riskLabel(level: string) {
   if (level === "low") return "低风险";
   if (level === "stable") return "稳定";
   return "待判断";
+}
+
+function confidenceLabel(status: string) {
+  if (status === "high") return "依据较充分";
+  if (status === "medium") return "可作初稿";
+  if (status === "low") return "资料不足";
+  return "待判断";
+}
+
+function evidenceKindLabel(kind: string) {
+  if (kind === "current_requirement") return "当前需求";
+  if (kind === "similar_requirement") return "相似历史";
+  if (kind === "timeline_version") return "历史版本";
+  return "证据";
 }
 
 function FeedbackActions({

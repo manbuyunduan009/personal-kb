@@ -547,6 +547,7 @@ h3 {
 .requirement-card,
 .similar-panel,
 .timeline-panel,
+.recommendation-panel,
 .change-analysis {
   display: grid;
   gap: 10px;
@@ -558,9 +559,16 @@ h3 {
 .requirement-card p,
 .similar-panel p,
 .timeline-panel p,
+.recommendation-panel p,
 .change-analysis p {
   margin: 0;
   line-height: 1.55;
+}
+
+.recommendation-panel small {
+  color: #6b665d;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .timeline-panel small {
@@ -632,6 +640,67 @@ h3 {
   background: #d8e9c6;
 }
 
+.recommended-option,
+.option-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.22);
+  background: #f8f5ec;
+}
+
+.recommended-option {
+  border-color: rgba(50, 98, 75, 0.52);
+  background: #edf4e7;
+}
+
+.recommended-option header,
+.option-item header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recommended-option header b,
+.option-item header b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.recommended-option header span,
+.option-item header span {
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid #20211d;
+  text-align: center;
+  font-size: 12px;
+}
+
+.option-list {
+  display: grid;
+  gap: 8px;
+}
+
+.evidence-list {
+  display: grid;
+  gap: 6px;
+}
+
+.evidence-list b {
+  font-size: 12px;
+}
+
+.evidence-list span {
+  padding: 7px 8px;
+  border: 1px solid rgba(32, 33, 29, 0.18);
+  background: rgba(235, 227, 210, 0.55);
+  color: #4a4840;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .similar-item {
   display: grid;
   gap: 7px;
@@ -691,6 +760,18 @@ h3 {
 }
 
 .quality-strip.needs_review {
+  background: #f4d5cd;
+}
+
+.quality-strip.high {
+  background: #d8e9c6;
+}
+
+.quality-strip.medium {
+  background: #efe1b9;
+}
+
+.quality-strip.low {
   background: #f4d5cd;
 }
 

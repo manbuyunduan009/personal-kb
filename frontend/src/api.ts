@@ -252,6 +252,45 @@ export type RequirementTimeline = {
   limitations: string[];
 };
 
+export type SolutionOption = {
+  name: string;
+  score: number;
+  summary: string;
+  pros: string[];
+  cons: string[];
+  when_to_use: string;
+};
+
+export type SolutionRecommendation = {
+  requirement: {
+    requirement_key: string;
+    requirement_title: string;
+    project_name: string;
+    summary: string;
+  };
+  confidence: {
+    status: "high" | "medium" | "low" | string;
+    score: number;
+    reasons: string[];
+  };
+  recommended_option: SolutionOption;
+  options: SolutionOption[];
+  decision_factors: Array<{ label: string; detail: string }>;
+  risks: string[];
+  acceptance_checklist: string[];
+  open_questions: string[];
+  next_steps: string[];
+  evidence_refs: Array<{
+    kind: string;
+    title: string;
+    source_path: string;
+    score?: number;
+    version_label?: string;
+  }>;
+  strategy: string;
+  limitations: string[];
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -303,6 +342,12 @@ export function getSimilarRequirements(requirementKey: string, limit = 3) {
 
 export function getRequirementTimeline(requirementKey: string) {
   return request<RequirementTimeline>(`/api/product/requirements/${encodeURIComponent(requirementKey)}/timeline`);
+}
+
+export function getSolutionRecommendation(requirementKey: string) {
+  return request<SolutionRecommendation>(
+    `/api/product/requirements/${encodeURIComponent(requirementKey)}/recommendation`
+  );
 }
 
 export function analyzeChange(oldDocumentId: string, newDocumentId: string) {

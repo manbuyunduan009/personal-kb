@@ -4,6 +4,7 @@ from app.product_expert import (
     analyze_requirement_change,
     build_requirement_card,
     build_requirement_timeline,
+    build_solution_recommendation,
     find_similar_requirements,
     group_documents_by_requirement,
     infer_requirement_identity,
@@ -308,3 +309,70 @@ def test_build_requirement_timeline_reports_version_changes(tmp_path: Path):
     assert timeline["change_events"][0]["risk_level"] in {"low", "medium", "high"}
     assert timeline["recurring_modules"]
     assert timeline["recommendations"]
+
+
+def test_build_solution_recommendation_uses_card_similar_and_timeline(tmp_path: Path):
+    target = tmp_path / "target.md"
+    similar = tmp_path / "similar.md"
+    target.write_text(
+        "\n".join(
+            [
+                "《剑网3》周年庆预约小程序",
+                "需求背景：周年庆活动需要统一预约入口。",
+                "目标：支持玩家预约线下活动。",
+                "功能范围：预约、票务、微信授权登录。",
+                "关键规则：重复预约需要提示。",
+                "验收：检查预约成功、授权失败和重复预约。",
+                "风险：授权失败会影响预约转化。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    similar.write_text(
+        "\n".join(
+            [
+                "《剑网3》演唱会预约活动",
+                "需求背景：演唱会活动需要预约入口。",
+                "目标：支持玩家预约演唱会。",
+                "功能范围：预约、票务、微信授权。",
+                "关键规则：资格不足不能预约。",
+                "验收：检查预约状态和授权失败。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    documents = [
+        {
+            "id": "target",
+            "title": "【需求管理】《剑网3》周年庆预约小程序.md",
+            "source_path": str(target),
+            "file_type": ".md",
+            "content_preview": target.read_text(encoding="utf-8"),
+            "last_modified": 300,
+            "indexed_at": "2026-07-03T00:00:00Z",
+        },
+        {
+            "id": "similar",
+            "title": "【需求管理】《剑网3》演唱会预约活动.md",
+            "source_path": str(similar),
+            "file_type": ".md",
+            "content_preview": similar.read_text(encoding="utf-8"),
+            "last_modified": 200,
+            "indexed_at": "2026-07-02T00:00:00Z",
+        },
+    ]
+    target_key = next(
+        group["requirement_key"]
+        for group in group_documents_by_requirement(documents)
+        if "周年庆预约" in group["requirement_title"]
+    )
+
+    recommendation = build_solution_recommendation(target_key, documents)
+
+    assert recommendation["confidence"]["score"] > 0
+    assert len(recommendation["options"]) == 3
+    assert recommendation["recommended_option"]["name"]
+    assert recommendation["decision_factors"]
+    assert recommendation["risks"]
+    assert recommendation["acceptance_checklist"]
+    assert recommendation["evidence_refs"]
