@@ -26,9 +26,9 @@
 | 10 | Context Compression | 检索结果太长时，先压缩再喂给大模型，减少噪声和 token 浪费。 | 根据问题关键词挑选相关句子，限制每条上下文长度。 |
 | 11 | Feedback Loop | 收集点赞、点踩、采用率，长期提升常用正确文档权重。 | 已做 v0：前端可反馈，后端存表，rerank 读取反馈分。 |
 | 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v3：低分时先用 LLM/规则改写 query，再扩大召回补救；仍不足再拒答。 |
-| 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v2：额外记录 LLM 改写、改写来源、召回方式，并在前端诊断面板展示。 |
-| 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v2：支持保存报告、和基线对比，并统计最近 trace 的 LLM 改写率和召回方式分布。 |
-| 15 | Citation Check | 检查答案里的结论是否能被引用来源支撑，减少有引用但乱答。 | 已做 v0 预研：独立规则模块，先测试不拦截主流程。 |
+| 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v3：额外记录 Citation Check 状态、支撑分、检查 claim 数和原因。 |
+| 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v3：支持 Citation Check 分布、风险率和平均支撑分统计。 |
+| 15 | Citation Check | 检查答案里的结论是否能被引用来源支撑，减少有引用但乱答。 | 已做 v1：接入 `/api/chat`、trace、前端诊断和评测报告；只记录风险，不拦截答案。 |
 | 16 | SQLite FTS/BM25 | 用数据库全文检索补强专有名词、字段、编号等硬关键词召回。 | 已做 v1：`document_chunks_fts` + fallback keyword 表，和向量召回合并。 |
 
 ## 3. 模块状态和持续优化入口
@@ -51,9 +51,9 @@
 | Context Compression | 已完成 v0 | 超长上下文按问题关键词挑相关句子，并限制长度。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 压缩；保留表格行标题；按引用来源分别压缩。 |
 | Feedback Loop | 已完成 v0 | 前端对引用/检索结果点赞点踩；后端存 `feedback` 表；rerank 用反馈分小幅加权。 | `backend/app/db.py`, `backend/app/main.py`, `backend/app/retrieval.py`, `frontend/src/main.tsx` | 加反馈备注；按问题相似度加权；做“已反馈”状态；加入评测报表。 |
 | Self-RAG | 已完成 v3 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时使用 LLM/规则 query rewrite，扩大召回再检索；补救后仍不足才拒答。 | `backend/app/rag.py`, `backend/app/query_rewrite.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 增加按问题类型的阈值；让模型做引用一致性检查；记录补救成功案例。 |
-| RAG Trace | 已完成 v2 | 每次 `/api/chat` 写入诊断记录；额外记录改写来源、是否使用 LLM 改写、改写错误、召回方式；前端展示这些诊断信息。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；支持按问题搜索 trace。 |
-| Eval Report | 已完成 v2 | 新增脚本跑固定问题集，支持 `--save` 保存 JSON、`--compare` 对比基线，并输出 trace 改写率和召回方式分布。 | `backend/scripts/eval_report.py`, `backend/tests/test_eval_report.py`, `backend/reports/.gitignore` | 把 Citation Check 指标并入报告；做趋势图；保存多次评测快照。 |
-| Citation Check | 已完成 v0 预研 | 新增独立规则模块，用答案 claim 和引用证据做词面支持度检查；当前只测试，不拦截答案。 | `backend/app/citation_check.py`, `backend/tests/test_citation_check.py` | 接入 trace；检查回答是否每个关键结论都有来源；低支持度时给前端显示风险提示。 |
+| RAG Trace | 已完成 v3 | 每次 `/api/chat` 写入诊断记录；额外记录改写来源、召回方式、Citation Check 状态、支撑分、检查 claim 数和原因；前端展示这些诊断信息。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；支持按问题搜索 trace。 |
+| Eval Report | 已完成 v3 | 新增脚本跑固定问题集，支持 `--save` 保存 JSON、`--compare` 对比基线，并输出 trace 改写率、召回方式和 Citation Check 风险指标。 | `backend/scripts/eval_report.py`, `backend/tests/test_eval_report.py`, `backend/reports/.gitignore` | 做趋势图；保存多次评测快照；把风险样例导出成待优化问题集。 |
+| Citation Check | 已完成 v1 | 新增独立规则模块，用答案 claim 和引用证据做词面支持度检查；已接入问答返回、trace、前端诊断和 eval report；当前只记录不拦截。 | `backend/app/citation_check.py`, `backend/app/rag.py`, `backend/app/db.py`, `frontend/src/main.tsx`, `backend/scripts/eval_report.py`, `backend/tests/test_citation_check.py` | 按 claim 输出具体对应引用；低支持度时支持人工复核；后续接 LLM judge 做二次判断。 |
 
 ## 4. 已完成模块的实现说明
 
@@ -341,13 +341,15 @@ cd D:\vscode\动效\personal-kb\backend
 - `chat_pass_rate`：AI 问答时，期望引用是否出现，或无依据问题是否正确拒答。
 - `refusal_rate`：成功问答里有多少次拒答。
 - `rescue_rate`：触发补救的问题里，有多少被补救成功。
+- `recent_trace_citation_check_risk_rate`：最近 trace 中，引用支撑偏弱或不足的比例。
+- `recent_trace_avg_citation_support_score`：最近 trace 的平均引用支撑分。
 - `avg_latency_ms`：搜索和问答的平均耗时。
 
 后续你可以单独优化：
 
 - 输出 JSON 文件，保存每次评测快照。
 - 加趋势对比：本次 vs 上次。
-- 把 Citation Check 的 supported/warning/unsupported 统计并入报告。
+- 把 Citation Check 的风险样例导出成待优化问题集。
 
 ### 4.13 Citation Check
 
@@ -358,23 +360,35 @@ cd D:\vscode\动效\personal-kb\backend
 3. 再从引用里收集标题、摘要、上下文、字段事实等证据文本。
 4. 用中文 2/3 字 ngram、英文词、数字一致性做支持度评分。
 5. 返回 `supported`、`warning`、`unsupported` 三类状态。
+6. `/api/chat` 生成答案后调用 Citation Check，并把结果随答案返回。
+7. `rag_traces` 保存 `citation_check_status`、`citation_support_score`、`citation_checked_claim_count`、`citation_check_reasons`。
+8. 前端回答区和右侧 RAG 诊断显示引用检查状态。
+9. `eval_report.py` 统计最近 trace 的 Citation Check 分布、风险率和平均支撑分。
 
 为什么这样做：
 
 - RAG 最危险的问题不是“没有引用”，而是“看起来有引用，但答案结论不是引用里说的”。
 - v0 先做规则检查，成本低、可测试、可解释。
-- 当前阶段只预研，不拦截主流程，避免误伤正常回答。
+- v1 接入 Trace 但不拦截答案，先让系统看见风险，再决定后续是否阻断。
+
+大白话理解：
+
+- 引用来源像“证据袋”，答案像“结论”。
+- Citation Check 做的事就是：把结论拆开，回证据袋里找有没有相同事实。
+- 如果找得到，状态是 `supported`；只找到一部分是 `warning`；基本找不到是 `unsupported`。
+- `not_applicable` 表示这次不是正常答案，比如证据不足拒答、没配置 API key、AI 调用失败，这类不应该被算成“引用不支撑”。
 
 当前边界：
 
 - 它是词面检查，不理解复杂推理、否定关系和多跳事实。
-- 如果引用只返回摘要，不返回完整上下文，检查会偏保守。
+- 如果引用上下文不完整，检查会偏保守。
 - 不应该把它当最终裁判，现阶段更适合作为 trace 风险信号。
+- 当前不拦截答案，只记录风险，避免规则误伤正常回答。
 
 后续你可以单独优化：
 
-- 接入 `/api/chat` 的 trace，记录每次回答的 citation support 状态。
-- 对低支持度答案在前端显示“引用支撑不足”提示。
+- 做 claim-by-claim 明细：每个结论对应哪条引用，哪条没有依据。
+- 在 trace 详情页显示完整证据对比。
 - 后续再用 LLM 做 claim-by-claim 检查，但要保留规则版作为低成本底线。
 
 ### 4.14 SQLite FTS/BM25

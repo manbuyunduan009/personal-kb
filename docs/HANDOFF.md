@@ -148,7 +148,9 @@ docs/RAG_OPTIMIZATION_PLAN.md
 - Sentence Window / Context Compression v0：回答时补前后文，并控制上下文长度。
 - Feedback Loop v0：引用和检索片段支持“有帮助 / 没帮助”，反馈会存入 SQLite 并小幅影响后续排序。
 - Self-RAG v3：问答前检查证据分，低分时使用 LLM/规则 query rewrite 补救，仍不足才返回“文档中没有找到依据”。
-- Eval Report v2：支持保存报告和对比基线。
+- RAG Trace v3：记录 Self-RAG、召回方式、LLM 改写和 Citation Check 诊断。
+- Citation Check v1：检查答案结论是否能被引用支撑，当前只记录风险，不拦截答案。
+- Eval Report v3：支持保存报告、对比基线，并统计 Citation Check 风险指标。
 
 因为索引策略会影响向量内容，换电脑或拉取新代码后建议重新点击一次“索引文档”。
 

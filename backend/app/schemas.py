@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,9 +23,17 @@ class Citation(BaseModel):
     feedback_score: float = 0.0
 
 
+class CitationCheck(BaseModel):
+    status: str
+    support_score: float
+    reasons: List[str]
+    checked_claim_count: int
+
+
 class ChatResponse(BaseModel):
     answer: str
     citations: List[Citation]
+    citation_check: Optional[CitationCheck] = None
 
 
 class FeedbackRequest(BaseModel):

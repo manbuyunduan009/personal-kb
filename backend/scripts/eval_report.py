@@ -25,6 +25,8 @@ COMPARISON_METRICS = (
     ("chat_pass_rate", "rate"),
     ("refusal_rate", "rate"),
     ("rescue_rate", "rate"),
+    ("recent_trace_citation_check_risk_rate", "rate"),
+    ("recent_trace_avg_citation_support_score", "score"),
     ("avg_latency_ms", "ms"),
     ("api_failure_count", "count"),
 )
@@ -47,6 +49,20 @@ def average_ms(values: Iterable[Any]) -> int:
     if not numbers:
         return 0
     return int(round(sum(numbers) / len(numbers)))
+
+
+def average_float(values: Iterable[Any]) -> float:
+    numbers = []
+    for value in values:
+        if value is None:
+            continue
+        try:
+            numbers.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    if not numbers:
+        return 0.0
+    return round(sum(numbers) / len(numbers), 4)
 
 
 def request_json(
@@ -137,6 +153,8 @@ def evaluate_search_case(case: Dict[str, Any], response: Optional[Dict[str, Any]
 def evaluate_chat_case(case: Dict[str, Any], response: Optional[Dict[str, Any]], latency_ms: int, error: str = ""):
     response = response if isinstance(response, dict) else {}
     citations = response.get("citations", []) if isinstance(response.get("citations", []), list) else []
+    citation_check = response.get("citation_check", {})
+    citation_check = citation_check if isinstance(citation_check, dict) else {}
     titles = citation_titles(citations)
     self_rag = response.get("self_rag", {}) if isinstance(response.get("self_rag", {}), dict) else {}
     is_refusal = is_refusal_response(response)
@@ -164,6 +182,9 @@ def evaluate_chat_case(case: Dict[str, Any], response: Optional[Dict[str, Any]],
         "answer_preview": str(response.get("answer", "")).replace("\n", " ")[:180],
         "citation_count": len(citations),
         "citation_titles": titles[:5],
+        "citation_check_status": str(citation_check.get("status", "")),
+        "citation_support_score": citation_check.get("support_score", 0.0),
+        "citation_checked_claim_count": citation_check.get("checked_claim_count", 0),
         "self_rag_status": str(self_rag.get("status", "")),
         "is_refusal": is_refusal,
         "rescue_attempted": rescue_attempted,
@@ -175,10 +196,21 @@ def evaluate_chat_case(case: Dict[str, Any], response: Optional[Dict[str, Any]],
 
 def summarize_traces(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     status_counts = Counter(str(trace.get("self_rag_status", "unknown") or "unknown") for trace in traces)
+    citation_status_counts = Counter(str(trace.get("citation_check_status", "unknown") or "unknown") for trace in traces)
     refusal_count = sum(1 for trace in traces if bool(trace.get("is_refusal", False)))
     rescue_attempted_count = sum(1 for trace in traces if bool(trace.get("rescue_attempted", False)))
     rescued_count = sum(1 for trace in traces if bool(trace.get("rescued", False)))
     llm_rewrite_count = sum(1 for trace in traces if bool(trace.get("query_rewrite_used_llm", False)))
+    citation_applicable = [
+        trace
+        for trace in traces
+        if str(trace.get("citation_check_status", "") or "") in {"supported", "warning", "unsupported"}
+    ]
+    citation_risk_count = sum(
+        1
+        for trace in citation_applicable
+        if str(trace.get("citation_check_status", "") or "") in {"warning", "unsupported"}
+    )
     retrieval_mode_counts: Counter = Counter()
     for trace in traces:
         modes = trace.get("retrieval_modes", [])
@@ -191,6 +223,13 @@ def summarize_traces(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
         "recent_trace_rescue_rate": rate(rescued_count, rescue_attempted_count),
         "recent_trace_llm_rewrite_rate": rate(llm_rewrite_count, len(traces)),
         "recent_trace_retrieval_mode_distribution": dict(retrieval_mode_counts),
+        "recent_trace_citation_check_distribution": dict(citation_status_counts),
+        "recent_trace_citation_check_applicable_count": len(citation_applicable),
+        "recent_trace_citation_check_risk_count": citation_risk_count,
+        "recent_trace_citation_check_risk_rate": rate(citation_risk_count, len(citation_applicable)),
+        "recent_trace_avg_citation_support_score": average_float(
+            trace.get("citation_support_score") for trace in citation_applicable
+        ),
         "recent_trace_avg_latency_ms": average_ms(trace.get("latency_ms") for trace in traces),
     }
 
@@ -343,6 +382,8 @@ def format_metric_value(value: Optional[float], unit: str) -> str:
         return "%sms" % int(round(value))
     if unit == "count":
         return str(int(round(value)))
+    if unit == "score":
+        return "%.2f" % value
     return str(value)
 
 
@@ -356,6 +397,8 @@ def format_metric_delta(value: Optional[float], unit: str) -> str:
         return "%s%sms" % (sign, int(round(value)))
     if unit == "count":
         return "%s%s" % (sign, int(round(value)))
+    if unit == "score":
+        return "%s%.2f" % (sign, value)
     return "%s%s" % (sign, value)
 
 
@@ -418,6 +461,15 @@ def format_case(record: Dict[str, Any]) -> List[str]:
         if record.get("answer_preview"):
             lines.append("  answer_preview: %s" % record["answer_preview"])
         lines.append("  citation_titles: %s" % (", ".join(record.get("citation_titles", [])) or "none"))
+        if record.get("citation_check_status"):
+            lines.append(
+                "  citation_check: status=%s support=%.2f claims=%s"
+                % (
+                    record.get("citation_check_status", ""),
+                    float(record.get("citation_support_score", 0.0) or 0.0),
+                    record.get("citation_checked_claim_count", 0),
+                )
+            )
     lines.append("  latency_ms: %s" % record.get("latency_ms", 0))
     return lines
 
@@ -458,6 +510,15 @@ def format_text_report(report: Dict[str, Any]) -> str:
         "recent_trace_llm_rewrite_rate: %s" % format_percent(summary["recent_trace_llm_rewrite_rate"]),
         "recent_trace_retrieval_mode_distribution: %s"
         % format_status_counts(summary["recent_trace_retrieval_mode_distribution"]),
+        "recent_trace_citation_check_distribution: %s"
+        % format_status_counts(summary["recent_trace_citation_check_distribution"]),
+        "recent_trace_citation_check_risk_rate: %s (%s/%s applicable traces)"
+        % (
+            format_percent(summary["recent_trace_citation_check_risk_rate"]),
+            summary["recent_trace_citation_check_risk_count"],
+            summary["recent_trace_citation_check_applicable_count"],
+        ),
+        "recent_trace_avg_citation_support_score: %.2f" % summary["recent_trace_avg_citation_support_score"],
         "recent_trace_avg_latency_ms: %s" % summary["recent_trace_avg_latency_ms"],
     ]
     if summary.get("trace_error"):

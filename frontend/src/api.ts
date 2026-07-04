@@ -63,6 +63,13 @@ export type Citation = {
   feedback_score?: number;
 };
 
+export type CitationCheck = {
+  status: "supported" | "warning" | "unsupported" | "not_applicable" | "unknown" | string;
+  support_score: number;
+  reasons: string[];
+  checked_claim_count: number;
+};
+
 export type SelfRagStatus = {
   status: "sufficient" | "rescued" | "insufficient" | "insufficient_after_rescue";
   rescue_attempted: boolean;
@@ -84,6 +91,10 @@ export type RagTrace = {
   answer_preview: string;
   is_refusal: boolean;
   citation_count: number;
+  citation_check_status: CitationCheck["status"];
+  citation_support_score: number;
+  citation_checked_claim_count: number;
+  citation_check_reasons: string[];
   cited_titles: string[];
   self_rag_status: SelfRagStatus["status"] | "unknown";
   rescue_attempted: boolean;
@@ -144,7 +155,13 @@ export function search(query: string, limit = 5) {
 }
 
 export function chat(question: string) {
-  return request<{ answer: string; citations: Citation[]; self_rag: SelfRagStatus; trace_id?: string }>("/api/chat", {
+  return request<{
+    answer: string;
+    citations: Citation[];
+    self_rag: SelfRagStatus;
+    citation_check?: CitationCheck;
+    trace_id?: string;
+  }>("/api/chat", {
     method: "POST",
     body: JSON.stringify({ question })
   });

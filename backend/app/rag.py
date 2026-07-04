@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Tuple
 
 from openai import OpenAI, OpenAIError
 
+from .citation_check import check_citation_support
 from .embeddings import EmbeddingProvider
 from .query_rewrite import rewrite_queries
 from .retrieval import compress_context, format_field_facts, keyword_recall_hits, query_variants, rerank_hits
@@ -45,6 +46,7 @@ FIELD_EVIDENCE_GROUPS = [
 ]
 CHILD_CONTEXT_MAX_CHARS = 900
 PARENT_CONTEXT_MAX_CHARS = 1200
+CITATION_CHECK_NOT_APPLICABLE = "not_applicable"
 
 
 class RagService:
@@ -200,11 +202,17 @@ class RagService:
         if not evidence_hits:
             best_score = self_rag["final_best_score"]
             rescue_note = "已尝试二次检索补救，仍未找到足够证据。" if self_rag["rescue_attempted"] else ""
+            answer = "%s %s最高相关度 %.2f，阈值 %.2f。" % (
+                INSUFFICIENT_EVIDENCE_MESSAGE,
+                rescue_note,
+                best_score,
+                self.min_evidence_score,
+            )
             return {
-                "answer": "%s %s最高相关度 %.2f，阈值 %.2f。"
-                % (INSUFFICIENT_EVIDENCE_MESSAGE, rescue_note, best_score, self.min_evidence_score),
+                "answer": answer,
                 "citations": [],
                 "self_rag": self_rag,
+                "citation_check": self._citation_check_not_applicable("answer refused because evidence was insufficient"),
             }
 
         if not self.openai_api_key:
@@ -212,19 +220,25 @@ class RagService:
                 "answer": "OPENAI_API_KEY is not configured. Semantic search is available, but AI answers need an OpenAI-compatible API key.",
                 "citations": citations,
                 "self_rag": self_rag,
+                "citation_check": self._citation_check_not_applicable("AI answer was not generated because OPENAI_API_KEY is missing"),
             }
 
-        context = "\n\n".join(
-            "[Source %s]\nFile: %s\nChunk: %s\nHeader: %s\n%s"
-            % (
-                index + 1,
-                citation["source_path"],
-                citation["chunk_index"],
-                citation["chunk_header"],
-                self._context_from_hit(question, hit),
+        source_contexts = []
+        citation_evidence = []
+        for index, (hit, citation) in enumerate(zip(evidence_hits, citations)):
+            hit_context = self._context_from_hit(question, hit)
+            source_contexts.append(
+                "[Source %s]\nFile: %s\nChunk: %s\nHeader: %s\n%s"
+                % (
+                    index + 1,
+                    citation["source_path"],
+                    citation["chunk_index"],
+                    citation["chunk_header"],
+                    hit_context,
+                )
             )
-            for index, (hit, citation) in enumerate(zip(evidence_hits, citations))
-        )
+            citation_evidence.append(self._citation_evidence_from_hit(citation, hit, hit_context))
+        context = "\n\n".join(source_contexts)
 
         client = OpenAI(api_key=self.openai_api_key, base_url=self.openai_base_url)
         try:
@@ -251,11 +265,14 @@ class RagService:
                 "answer": "AI 调用失败：%s" % str(exc),
                 "citations": citations,
                 "self_rag": self_rag,
+                "citation_check": self._citation_check_not_applicable("AI call failed before a final answer was generated"),
             }
+        answer = response.choices[0].message.content or ""
         return {
-            "answer": response.choices[0].message.content or "",
+            "answer": answer,
             "citations": citations,
             "self_rag": self_rag,
+            "citation_check": self._check_answer_citations(answer, citation_evidence),
         }
 
     def _rescue_query_plan(self, question: str) -> Dict[str, object]:
@@ -407,6 +424,49 @@ class RagService:
             "score": hit.get("score", 0.0),
             "feedback_score": hit.get("feedback_score", 0.0),
         }
+
+    @staticmethod
+    def _citation_evidence_from_hit(
+        citation: Dict[str, object],
+        hit: Dict[str, object],
+        context: str,
+    ) -> Dict[str, object]:
+        evidence = dict(citation)
+        evidence["context"] = context
+        evidence["content"] = hit.get("content", "")
+        evidence["metadata"] = hit.get("metadata", {})
+        return evidence
+
+    @staticmethod
+    def _citation_check_not_applicable(reason: str) -> Dict[str, object]:
+        return {
+            "status": CITATION_CHECK_NOT_APPLICABLE,
+            "support_score": 0.0,
+            "reasons": [reason],
+            "checked_claim_count": 0,
+        }
+
+    def _check_answer_citations(
+        self,
+        answer: str,
+        citation_evidence: List[Dict[str, object]],
+    ) -> Dict[str, object]:
+        if self._is_refusal_answer(answer):
+            return self._citation_check_not_applicable("answer is a refusal, so citation support is not applicable")
+        return check_citation_support(answer, citation_evidence)
+
+    @staticmethod
+    def _is_refusal_answer(answer: str) -> bool:
+        normalized = (answer or "").strip()
+        if not normalized:
+            return False
+        refusal_markers = [
+            "文档中没有找到依据",
+            "没有找到依据",
+            "insufficient evidence",
+            "not enough evidence",
+        ]
+        return any(marker.lower() in normalized.lower() for marker in refusal_markers)
 
     @staticmethod
     def _context_from_hit(question: str, hit: Dict[str, object]) -> str:

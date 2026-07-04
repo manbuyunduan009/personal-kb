@@ -87,6 +87,8 @@ def test_summarize_results_counts_pass_rates_failures_and_traces():
             "is_refusal": False,
             "rescue_attempted": False,
             "rescued": False,
+            "citation_check_status": "supported",
+            "citation_support_score": 0.8,
             "latency_ms": 100,
         },
         {
@@ -96,6 +98,8 @@ def test_summarize_results_counts_pass_rates_failures_and_traces():
             "rescued": False,
             "query_rewrite_used_llm": True,
             "retrieval_modes": ["hybrid+bm25"],
+            "citation_check_status": "warning",
+            "citation_support_score": 0.2,
             "latency_ms": 300,
         },
     ]
@@ -114,6 +118,11 @@ def test_summarize_results_counts_pass_rates_failures_and_traces():
     }
     assert summary["recent_trace_llm_rewrite_rate"] == 0.5
     assert summary["recent_trace_retrieval_mode_distribution"] == {"hybrid+bm25": 1}
+    assert summary["recent_trace_citation_check_distribution"] == {"supported": 1, "warning": 1}
+    assert summary["recent_trace_citation_check_applicable_count"] == 2
+    assert summary["recent_trace_citation_check_risk_count"] == 1
+    assert summary["recent_trace_citation_check_risk_rate"] == 0.5
+    assert summary["recent_trace_avg_citation_support_score"] == 0.5
     assert summary["recent_trace_avg_latency_ms"] == 200
 
 
@@ -215,6 +224,11 @@ def test_format_text_report_includes_comparison_section():
             "recent_trace_rescue_rate": 0.0,
             "recent_trace_llm_rewrite_rate": 0.0,
             "recent_trace_retrieval_mode_distribution": {},
+            "recent_trace_citation_check_distribution": {},
+            "recent_trace_citation_check_applicable_count": 0,
+            "recent_trace_citation_check_risk_count": 0,
+            "recent_trace_citation_check_risk_rate": 0.0,
+            "recent_trace_avg_citation_support_score": 0.0,
             "recent_trace_avg_latency_ms": 0,
             "trace_error": "",
         },

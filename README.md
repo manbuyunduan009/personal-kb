@@ -122,6 +122,7 @@ cd D:\vscode\动效\personal-kb\backend
 - 重复索引时跳过未变化文件
 - SQLite FTS/BM25 关键词索引
 - LLM query rewrite 清洗和回退
+- Citation Check 引用支撑检查
 - Self-RAG 补救、trace 和评测报告
 
 ## 检索评测
@@ -134,7 +135,7 @@ cd D:\vscode\动效\personal-kb\backend
 python scripts\eval_retrieval.py
 ```
 
-脚本会检查固定检索问题是否命中预期文档，并检查问答是否带引用来源、无依据问题是否拒答。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索和回答有没有变好。
+脚本会检查固定检索问题是否命中预期文档，并检查问答是否带引用来源、无依据问题是否拒答。评测报告还会读取最近 trace，统计 LLM 改写率、召回方式、Citation Check 分布、引用支撑风险率和平均支撑分。
 
 需要保存并对比评测报告时：
 

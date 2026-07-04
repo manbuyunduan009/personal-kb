@@ -245,6 +245,7 @@ h3 {
 
 .answer,
 .self-rag,
+.citation-check,
 .citations,
 .preview,
 .trace-panel,
@@ -296,6 +297,31 @@ h3 {
 .diagnostic-note {
   margin: 10px 0 0;
   color: #7a3525;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.citation-check.warning,
+.citation-check.unsupported {
+  border-color: rgba(122, 36, 29, 0.45);
+  background: #f4d5cd;
+}
+
+.citation-check.not_applicable {
+  background: #ebe3d2;
+}
+
+.check-reasons {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.check-reasons span {
+  padding: 7px 8px;
+  border: 1px solid rgba(32, 33, 29, 0.18);
+  background: rgba(248, 245, 236, 0.72);
+  color: #4a4840;
   font-size: 12px;
   line-height: 1.45;
 }

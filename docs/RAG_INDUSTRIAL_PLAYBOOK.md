@@ -54,13 +54,13 @@
 | 2 | 已完成 | Hybrid Search / Rerank v0 | 向量检索和关键词检索互补，先解决召回漏和排序乱 | 向量+关键词召回，轻量重排 | 召回和排序是两件事 | 评测问题 top3 命中 |
 | 3 | 已完成 | Feedback Loop v0 | 先记录用户判断，后续才能学习 | 点赞点踩、反馈加权 | 反馈先是数据，再是算法 | 反馈后排序微调 |
 | 4 | 已完成 | Field-aware Retrieval | 需求文档常把关键字段放表格里，必须和正文建立关系 | 文档属性传播到 chunk | 字段是文档级上下文 | “周年庆是哪个游戏的？”通过 |
-| 5 | 已完成 | Self-RAG v2 | 先防硬答，再做低分补救 | 阈值过滤、二次检索、拒答 | 找不到依据时不要硬答 | 无依据问题拒答 |
-| 6 | 已完成 | RAG Trace v1 | 工业优化前必须先可观测 | `rag_traces` 表、诊断面板 | 先看清链路再调参 | trace 能记录分数、补救、引用 |
-| 7 | 下一步 | Parent-Child Chunk | 真正实现 Small-to-Big，小块找准，大块答全 | parent chunk / child chunk 关系 | 精准召回和完整上下文分离 | 长问题答案更完整 |
-| 8 | 待做 | SQLite FTS / BM25 | 当前关键词召回是轻量扫描，工业版需要更稳定的字面检索 | FTS 表、BM25-like 排序 | 语义检索和字面检索互补 | 专有名词命中更稳 |
-| 9 | 待做 | LLM Query Rewrite | 用户问题口语化时，规则改写不够 | AI 生成多路检索 query | 问题改写不是回答，是检索准备 | 低分问题补救率提升 |
-| 10 | 待做 | Citation Check | AI 可能答得像对，但引用不支撑 | 答案-引用一致性检查 | 答案必须能回到证据 | 无引用或弱引用自动降级 |
-| 11 | 待做 | Eval Report | 只有单次评测不够，要看趋势 | 命中率、拒答率、补救率、耗时报表 | 优化要看指标变化 | 每次提交前跑报告 |
+| 5 | 已完成 | Self-RAG v3 | 先防硬答，再做低分补救 | 阈值过滤、LLM/规则改写、二次检索、拒答 | 找不到依据时不要硬答 | 无依据问题拒答 |
+| 6 | 已完成 | RAG Trace v3 | 工业优化前必须先可观测 | `rag_traces` 表、诊断面板、引用检查记录 | 先看清链路再调参 | trace 能记录分数、补救、引用和支撑状态 |
+| 7 | 已完成 | Parent-Child Chunk | 真正实现 Small-to-Big，小块找准，大块答全 | parent context / child chunk 关系 | 精准召回和完整上下文分离 | 长问题答案更完整 |
+| 8 | 已完成 | SQLite FTS / BM25 | 当前关键词召回是轻量扫描，工业版需要更稳定的字面检索 | FTS 表、BM25-like 排序 | 语义检索和字面检索互补 | 专有名词命中更稳 |
+| 9 | 已完成 | LLM Query Rewrite | 用户问题口语化时，规则改写不够 | AI 生成多路检索 query | 问题改写不是回答，是检索准备 | 低分问题补救率提升 |
+| 10 | 已完成 | Citation Check Trace | AI 可能答得像对，但引用不支撑 | 答案-引用一致性检查写入 trace | 答案必须能回到证据 | trace 有 supported/warning/unsupported |
+| 11 | 已完成 | Eval Report v3 | 只有单次评测不够，要看趋势 | 命中率、拒答率、补救率、引用支撑风险报表 | 优化要看指标变化 | 每次提交前跑报告 |
 
 ## 4. 已完成决策记录
 
@@ -846,3 +846,99 @@ C 线：Eval Report 对比指标，让优化可以和历史基线比较。
 - BM25 下一步做字段权重：标题、字段事实、正文不要同权。
 - Query Rewrite 下一步让 LLM 输出结构化类型：明确化、关键词化、子问题化。
 - Eval Report 下一步保存多次报告并生成趋势表。
+
+### 11.3 2026-07-04 第三批：Citation Check 接入 Trace
+
+本批次目标：
+
+```text
+把 Citation Check 从“独立预研模块”接进工业闭环。
+先记录答案是否被引用支撑，不拦截答案。
+让 trace、前端诊断和 eval report 都能看到引用支撑风险。
+```
+
+为什么现在做：
+
+- 前面已经有 Parent-Child、BM25、Query Rewrite 和 Self-RAG，系统能更努力地找资料。
+- 资料找到了以后，下一个风险是“答案看起来有引用，但结论其实不是引用里说的”。
+- 如果直接拦截答案，规则检查可能误伤正常回答；所以先接 Trace，先观察风险，再决定是否进入强拦截。
+
+大白话理解：
+
+- 检索解决“找不找得到资料”。
+- Self-RAG 解决“资料不够时要不要拒答”。
+- Citation Check 解决“AI 已经答了以后，这个答案有没有被引用撑住”。
+- 这版像给答案装了一个记录仪：先记录驾驶数据，不立刻接管方向盘。
+
+具体规则：
+
+1. `/api/chat` 拿到证据 chunk 后，先构造给 AI 的上下文。
+2. AI 正常生成答案后，调用 `check_citation_support(answer, citation_evidence)`。
+3. citation evidence 不只放引用摘要，还放命中 chunk、parent context、字段事实和元数据。
+4. 检查器把答案拆成 claim，再和引用证据做中文 ngram、英文 token、数字一致性匹配。
+5. 返回：
+   - `supported`：关键 claim 基本能被引用支撑。
+   - `warning`：部分 claim 支撑偏弱。
+   - `unsupported`：多数 claim 找不到引用支撑。
+   - `not_applicable`：这次不是正常答案，比如证据不足拒答、没配置 API key、AI 调用失败。
+6. `rag_traces` 新增并保存：
+   - `citation_check_status`
+   - `citation_support_score`
+   - `citation_checked_claim_count`
+   - `citation_check_reasons`
+7. 前端回答区展示当前回答的引用检查。
+8. 右侧 RAG 诊断展示每条 trace 的引用检查状态。
+9. `eval_report.py` 统计：
+   - `recent_trace_citation_check_distribution`
+   - `recent_trace_citation_check_risk_rate`
+   - `recent_trace_avg_citation_support_score`
+
+为什么不拦截：
+
+- 规则版 Citation Check 是词面检查，不懂复杂推理和否定。
+- 工业系统通常先观测、再报警、最后才拦截。
+- 先记录能积累真实风险样本，后面再决定哪些状态该提醒、哪些状态该阻断。
+
+好处：
+
+- 可以发现“有引用但引用撑不住”的回答。
+- 每次问答都会留下可分析的安全信号。
+- 评测报告能看到引用风险率，后续优化可以看趋势。
+- 前端能直接看到风险，不需要翻数据库。
+
+缺点和边界：
+
+- 词面重合高不代表事实一定正确。
+- 词面重合低也不代表一定错误，可能是同义表达或需要多跳推理。
+- 当前不做 claim-by-claim 引用定位，只给整体状态和原因。
+- 低支持度暂时不阻断答案，只提示和记录。
+
+验证方式：
+
+- 后端测试：`$env:PYTHONPATH='backend'; backend\.venv\Scripts\python.exe -m pytest`
+- 前端构建：`npm run build`
+- 手动验证：提一个真实问题，检查回答区是否出现“引用检查”，右侧 RAG 诊断是否记录 citation check。
+- 评测验证：运行 `backend\scripts\eval_report.py`，检查报告是否输出 Citation Check 分布、风险率和平均支撑分。
+
+当前验证结果：
+
+- 后端全量测试：`60 passed`。
+- 前端构建：`npm run build` 通过。
+- 临时后端评测：`eval_report.py --base-url http://127.0.0.1:8010 --trace-limit 10` 通过。
+- 固定评测指标：
+  - `search_pass_rate: 100.0% (6/6)`
+  - `chat_pass_rate: 100.0% (4/4)`
+  - `refusal_rate: 25.0% (1/4)`
+  - `api_failure_count: 0`
+- Citation Check 指标：
+  - `recent_trace_citation_check_distribution: not_applicable=1, supported=2, unknown=6, warning=1`
+  - `recent_trace_citation_check_risk_rate: 33.3% (1/3 applicable traces)`
+  - `recent_trace_avg_citation_support_score: 0.77`
+- 说明：`unknown=6` 来自接入 Citation Check 前的历史 trace，没有新字段，不代表当前链路失败。
+
+后续优化：
+
+- 做 trace 详情页，展示每个 claim 对应的证据文本。
+- 对 `unsupported` 增加前端明显风险提示，但仍先不拦截。
+- 用 LLM judge 做二次检查，但保留规则版作为低成本兜底。
+- 把高风险 trace 导出成回归评测问题集。

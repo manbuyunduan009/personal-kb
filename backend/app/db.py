@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS rag_traces (
     answer_preview TEXT NOT NULL,
     is_refusal INTEGER NOT NULL,
     citation_count INTEGER NOT NULL,
+    citation_check_status TEXT NOT NULL DEFAULT '',
+    citation_support_score REAL NOT NULL DEFAULT 0,
+    citation_checked_claim_count INTEGER NOT NULL DEFAULT 0,
+    citation_check_reasons TEXT NOT NULL DEFAULT '[]',
     cited_titles TEXT NOT NULL,
     self_rag_status TEXT NOT NULL,
     rescue_attempted INTEGER NOT NULL,
@@ -96,6 +100,10 @@ class DocumentRepository:
             "query_rewrite_used_llm": "ALTER TABLE rag_traces ADD COLUMN query_rewrite_used_llm INTEGER NOT NULL DEFAULT 0",
             "query_rewrite_error": "ALTER TABLE rag_traces ADD COLUMN query_rewrite_error TEXT NOT NULL DEFAULT ''",
             "retrieval_modes": "ALTER TABLE rag_traces ADD COLUMN retrieval_modes TEXT NOT NULL DEFAULT '[]'",
+            "citation_check_status": "ALTER TABLE rag_traces ADD COLUMN citation_check_status TEXT NOT NULL DEFAULT ''",
+            "citation_support_score": "ALTER TABLE rag_traces ADD COLUMN citation_support_score REAL NOT NULL DEFAULT 0",
+            "citation_checked_claim_count": "ALTER TABLE rag_traces ADD COLUMN citation_checked_claim_count INTEGER NOT NULL DEFAULT 0",
+            "citation_check_reasons": "ALTER TABLE rag_traces ADD COLUMN citation_check_reasons TEXT NOT NULL DEFAULT '[]'",
         }
         for column, statement in migrations.items():
             if column not in columns:
@@ -227,6 +235,11 @@ class DocumentRepository:
     def add_rag_trace(self, question: str, result: Dict[str, object], latency_ms: int) -> Dict[str, object]:
         self_rag = result.get("self_rag", {}) if isinstance(result.get("self_rag", {}), dict) else {}
         citations = result.get("citations", []) if isinstance(result.get("citations", []), list) else []
+        citation_check = result.get("citation_check", {})
+        citation_check = citation_check if isinstance(citation_check, dict) else {}
+        citation_check_reasons = citation_check.get("reasons", [])
+        if not isinstance(citation_check_reasons, list):
+            citation_check_reasons = [str(citation_check_reasons)]
         answer = str(result.get("answer", ""))
         cited_titles = []
         for citation in citations:
@@ -242,6 +255,10 @@ class DocumentRepository:
             "answer_preview": answer[:240],
             "is_refusal": int(status.startswith("insufficient") or ("文档中没有找到依据" in answer and not citations)),
             "citation_count": len(citations),
+            "citation_check_status": str(citation_check.get("status", "")),
+            "citation_support_score": float(citation_check.get("support_score", 0.0) or 0.0),
+            "citation_checked_claim_count": int(citation_check.get("checked_claim_count", 0) or 0),
+            "citation_check_reasons": json.dumps(citation_check_reasons, ensure_ascii=False),
             "cited_titles": json.dumps(cited_titles, ensure_ascii=False),
             "self_rag_status": status,
             "rescue_attempted": int(bool(self_rag.get("rescue_attempted", False))),
@@ -263,6 +280,8 @@ class DocumentRepository:
                 """
                 INSERT INTO rag_traces (
                     id, question, answer_preview, is_refusal, citation_count,
+                    citation_check_status, citation_support_score,
+                    citation_checked_claim_count, citation_check_reasons,
                     cited_titles, self_rag_status, rescue_attempted, rescued,
                     initial_best_score, final_best_score, min_evidence_score,
                     evidence_count, rescue_queries, rescue_query_source,
@@ -271,6 +290,8 @@ class DocumentRepository:
                 )
                 VALUES (
                     :id, :question, :answer_preview, :is_refusal, :citation_count,
+                    :citation_check_status, :citation_support_score,
+                    :citation_checked_claim_count, :citation_check_reasons,
                     :cited_titles, :self_rag_status, :rescue_attempted, :rescued,
                     :initial_best_score, :final_best_score, :min_evidence_score,
                     :evidence_count, :rescue_queries, :rescue_query_source,
@@ -288,6 +309,8 @@ class DocumentRepository:
                 """
                 SELECT
                     id, question, answer_preview, is_refusal, citation_count,
+                    citation_check_status, citation_support_score,
+                    citation_checked_claim_count, citation_check_reasons,
                     cited_titles, self_rag_status, rescue_attempted, rescued,
                     initial_best_score, final_best_score, min_evidence_score,
                     evidence_count, rescue_queries, rescue_query_source,
@@ -311,4 +334,5 @@ class DocumentRepository:
         decoded["cited_titles"] = json.loads(str(decoded.get("cited_titles") or "[]"))
         decoded["rescue_queries"] = json.loads(str(decoded.get("rescue_queries") or "[]"))
         decoded["retrieval_modes"] = json.loads(str(decoded.get("retrieval_modes") or "[]"))
+        decoded["citation_check_reasons"] = json.loads(str(decoded.get("citation_check_reasons") or "[]"))
         return decoded

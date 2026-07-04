@@ -103,6 +103,7 @@ def test_answer_stops_when_evidence_score_is_too_low():
     assert result["citations"] == []
     assert result["self_rag"]["rescue_attempted"] is True
     assert result["self_rag"]["rescued"] is False
+    assert result["citation_check"]["status"] == "not_applicable"
 
 
 def test_answer_keeps_citations_when_evidence_is_enough_without_api_key():
@@ -121,6 +122,46 @@ def test_answer_keeps_citations_when_evidence_is_enough_without_api_key():
     assert len(result["citations"]) == 1
     assert result["citations"][0]["title"] == "专题验收助手PRD.md"
     assert result["self_rag"]["status"] == "sufficient"
+    assert result["citation_check"]["status"] == "not_applicable"
+
+
+def test_answer_records_citation_check_for_generated_answer(monkeypatch):
+    class FakeMessage:
+        content = "目标用户是专题产品经理。"
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeResponse:
+        choices = [FakeChoice()]
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return FakeResponse()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = FakeChat()
+
+    monkeypatch.setattr("app.rag.OpenAI", FakeOpenAI)
+    service = RagService(
+        embeddings=FakeEmbeddings(),
+        vector_store=FakeVectorStore([make_hit(0.8)]),
+        openai_api_key="fake-key",
+        openai_base_url="https://example.com/v1",
+        openai_model="test-model",
+        min_evidence_score=0.3,
+    )
+
+    result = service.answer("专题验收助手的目标用户是谁？")
+
+    assert result["answer"] == "目标用户是专题产品经理。"
+    assert len(result["citations"]) == 1
+    assert result["citation_check"]["status"] == "supported"
+    assert result["citation_check"]["checked_claim_count"] == 1
 
 
 def test_answer_uses_structured_fields_for_field_lookup_questions_without_api_key():
@@ -150,6 +191,7 @@ def test_answer_uses_structured_fields_for_field_lookup_questions_without_api_ke
     assert len(result["citations"]) == 1
     assert result["citations"][0]["title"] == "线下活动需求.docx"
     assert result["self_rag"]["rescue_attempted"] is False
+    assert result["citation_check"]["status"] == "not_applicable"
 
 
 def test_structured_fields_do_not_unlock_unrelated_low_score_questions():

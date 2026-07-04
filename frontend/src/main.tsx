@@ -17,6 +17,7 @@ import {
 import {
   chat,
   Citation,
+  CitationCheck,
   DocumentItem,
   getDocuments,
   getHealth,
@@ -48,6 +49,7 @@ function App() {
   const [question, setQuestion] = useState("专题验收助手的目标用户是谁？");
   const [answer, setAnswer] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
+  const [citationCheck, setCitationCheck] = useState<CitationCheck | null>(null);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [traces, setTraces] = useState<RagTrace[]>([]);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
@@ -102,6 +104,7 @@ function App() {
       setResults(data.results);
       setLastSearchQuery(question);
       setSelfRag(null);
+      setCitationCheck(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -118,6 +121,7 @@ function App() {
       setAnswer(data.answer);
       setCitations(data.citations);
       setSelfRag(data.self_rag);
+      setCitationCheck(data.citation_check || null);
       const searchData = await search(question);
       const traceData = await getTraces();
       setResults(searchData.results);
@@ -288,6 +292,27 @@ function App() {
             </article>
           )}
 
+          {citationCheck && (
+            <article className={`citation-check ${citationCheck.status}`}>
+              <h3>引用检查</h3>
+              <div className="self-rag-grid">
+                <span>状态</span>
+                <b>{citationCheckStatusLabel(citationCheck.status)}</b>
+                <span>支撑分</span>
+                <b>{citationCheck.support_score.toFixed(2)}</b>
+                <span>检查结论数</span>
+                <b>{citationCheck.checked_claim_count}</b>
+              </div>
+              {citationCheck.reasons.length > 0 && (
+                <div className="check-reasons">
+                  {citationCheck.reasons.slice(0, 3).map((reason) => (
+                    <span key={reason}>{reason}</span>
+                  ))}
+                </div>
+              )}
+            </article>
+          )}
+
           <article className="citations">
             <h3>引用来源</h3>
             {citations.length === 0 && <p className="empty">还没有引用来源。</p>}
@@ -382,7 +407,10 @@ function App() {
             <h3>RAG 诊断</h3>
             {traces.length === 0 && <p className="empty">还没有问答诊断记录。</p>}
             {traces.map((trace) => (
-              <article className={trace.is_refusal ? "trace-item warning" : "trace-item"} key={trace.id}>
+              <article
+                className={trace.is_refusal || isCitationCheckRisk(trace.citation_check_status) ? "trace-item warning" : "trace-item"}
+                key={trace.id}
+              >
                 <header>
                   <b>{selfRagStatusLabel(trace.self_rag_status)}</b>
                   <span>{trace.latency_ms}ms</span>
@@ -397,7 +425,12 @@ function App() {
                   {trace.retrieval_modes.length > 0 ? `召回 ${formatList(trace.retrieval_modes)}` : "召回未记录"}
                   {trace.rescue_query_source ? ` · 改写 ${trace.query_rewrite_used_llm ? "LLM" : trace.rescue_query_source}` : ""}
                 </small>
+                <small>
+                  引用检查 {citationCheckStatusLabel(trace.citation_check_status || "unknown")} · 支撑{" "}
+                  {(trace.citation_support_score || 0).toFixed(2)} · 结论 {trace.citation_checked_claim_count || 0}
+                </small>
                 {trace.query_rewrite_error && <small>{trace.query_rewrite_error}</small>}
+                {trace.citation_check_reasons?.[0] && <small>{trace.citation_check_reasons[0]}</small>}
                 {trace.cited_titles.length > 0 && <small>{trace.cited_titles.join(" / ")}</small>}
               </article>
             ))}
@@ -426,6 +459,19 @@ function selfRagStatusLabel(status: SelfRagStatus["status"] | "unknown" | string
   if (status === "insufficient") return "证据不足";
   if (status === "unknown") return "未记录";
   return "证据充足";
+}
+
+function citationCheckStatusLabel(status: CitationCheck["status"] | string) {
+  if (status === "supported") return "引用可支撑";
+  if (status === "warning") return "支撑偏弱";
+  if (status === "unsupported") return "支撑不足";
+  if (status === "not_applicable") return "无需检查";
+  if (status === "unknown" || !status) return "未记录";
+  return status;
+}
+
+function isCitationCheckRisk(status: CitationCheck["status"] | string) {
+  return status === "warning" || status === "unsupported";
 }
 
 function FeedbackActions({

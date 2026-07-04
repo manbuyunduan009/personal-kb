@@ -27,6 +27,12 @@ def test_rag_trace_records_answer_diagnostics(tmp_path: Path):
         result={
             "answer": "文档中没有找到依据。",
             "citations": [],
+            "citation_check": {
+                "status": "not_applicable",
+                "support_score": 0.0,
+                "checked_claim_count": 0,
+                "reasons": ["answer refused because evidence was insufficient"],
+            },
             "self_rag": {
                 "status": "insufficient_after_rescue",
                 "rescue_attempted": True,
@@ -57,6 +63,10 @@ def test_rag_trace_records_answer_diagnostics(tmp_path: Path):
     assert traces[0]["query_rewrite_used_llm"] is True
     assert traces[0]["query_rewrite_error"] == ""
     assert traces[0]["retrieval_modes"] == ["hybrid+bm25"]
+    assert traces[0]["citation_check_status"] == "not_applicable"
+    assert traces[0]["citation_support_score"] == 0.0
+    assert traces[0]["citation_checked_claim_count"] == 0
+    assert traces[0]["citation_check_reasons"] == ["answer refused because evidence was insufficient"]
     assert traces[0]["latency_ms"] == 1234
 
 
