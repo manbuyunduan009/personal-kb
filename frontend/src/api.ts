@@ -2,6 +2,10 @@ export type Health = {
   ok: boolean;
   docs_root: string;
   sqlite: string;
+  vector_store: string;
+  embedding_provider: string;
+  embedding_model: string;
+  chunk_count: number;
   chroma_count: number;
   vector_ready: boolean;
   vector_error: string;

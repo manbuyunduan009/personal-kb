@@ -129,17 +129,17 @@ overlap = 120
 - `.md/.docx/.xlsx` 解析逻辑
 - 文本切片
 - SQLite 元数据
-- Chroma 向量库接口
+- 本地 SQLite 向量库接口
 - 开源 embedding 接口
+- `hash` 首跑模式，用于不下载模型时验证全链路
 - OpenAI 兼容问答接口
 - 中文前端工作台
 
 还需要跑通：
 
-- 安装 `chromadb`
-- 安装 `sentence-transformers`
+- 用 `hash` 模式先跑通索引和检索
+- 网络可用后切到 `fastembed`
 - 首次下载 `BAAI/bge-small-zh-v1.5`
-- 点击“索引文档”
 - 用真实问题验证检索质量
 
 ## 5. 下一步优先级

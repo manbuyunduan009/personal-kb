@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import DocumentRepository
-from .embeddings import SentenceTransformerEmbeddingProvider
+from .embeddings import create_embedding_provider
 from .indexer import Indexer
 from .rag import RagService
 from .schemas import ChatRequest, SearchRequest
@@ -29,8 +29,8 @@ def repository_service():
 
 def rag_services():
     settings, repository = repository_service()
-    vector_store = VectorStore(settings.chroma_path)
-    embeddings = SentenceTransformerEmbeddingProvider(settings.embedding_model)
+    vector_store = VectorStore(settings.vector_sqlite_path)
+    embeddings = create_embedding_provider(settings.embedding_provider, settings.embedding_model)
     return settings, repository, vector_store, embeddings
 
 
@@ -41,12 +41,12 @@ def runtime_error(exc: Exception):
 @app.get("/api/health")
 def health():
     settings, repository = repository_service()
-    chroma_count = 0
+    chunk_count = 0
     vector_ready = True
     vector_error = ""
     try:
-        vector_store = VectorStore(settings.chroma_path)
-        chroma_count = vector_store.count()
+        vector_store = VectorStore(settings.vector_sqlite_path)
+        chunk_count = vector_store.count()
     except Exception as exc:
         vector_ready = False
         vector_error = str(exc)
@@ -55,7 +55,11 @@ def health():
         "ok": True,
         "docs_root": str(settings.docs_root),
         "sqlite": str(repository.sqlite_path),
-        "chroma_count": chroma_count,
+        "vector_store": str(settings.vector_sqlite_path),
+        "embedding_provider": settings.embedding_provider,
+        "embedding_model": settings.embedding_model,
+        "chunk_count": chunk_count,
+        "chroma_count": chunk_count,
         "vector_ready": vector_ready,
         "vector_error": vector_error,
         "openai_configured": bool(settings.openai_api_key),

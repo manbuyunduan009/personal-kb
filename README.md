@@ -1,6 +1,6 @@
 # Personal KB
 
-一个教学型本地个人知识库 RAG 项目。第一版读取 `D:\vscode\动效\docs`，解析 `.md`、`.docx`、`.xlsx`，切片后写入 Chroma 向量库，并通过 OpenAI 兼容接口完成问答引用。
+一个教学型本地个人知识库 RAG 项目。第一版读取 `D:\vscode\动效\docs`，解析 `.md`、`.docx`、`.xlsx`，切片后写入本地 SQLite 向量库，并通过 OpenAI 兼容接口完成问答引用。
 
 ## 你正在学什么
 
@@ -18,7 +18,7 @@ personal-kb
 │  │  ├─ parsers.py       # md/docx/xlsx 解析
 │  │  ├─ chunking.py      # 文本切片
 │  │  ├─ indexer.py       # 扫描 docs 并入库
-│  │  ├─ vector_store.py  # Chroma 向量库
+│  │  ├─ vector_store.py  # 本地 SQLite 向量库
 │  │  └─ rag.py           # 检索 + AI 问答
 │  └─ tests
 └─ frontend
@@ -44,14 +44,21 @@ Copy-Item .env.example .env
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-第一次运行索引时，`sentence-transformers` 会下载 `BAAI/bge-small-zh-v1.5`。这一步需要联网，耗时取决于网络和机器性能。
+默认使用 `EMBEDDING_PROVIDER=hash`，用于先跑通项目，不需要下载模型。它是词面匹配型向量，不等同于真实语义 embedding。
+
+切到真实本地开源 embedding 时，把 `.env` 改成：
+
+```text
+EMBEDDING_PROVIDER=fastembed
+```
+
+第一次使用 `fastembed` 索引时会下载 `BAAI/bge-small-zh-v1.5`。这一步需要联网，耗时取决于网络和机器性能。
 
 如果 `pip install -r requirements.txt` 因网络慢超时，直接重复执行同一条命令即可。也可以分批安装：
 
 ```powershell
 pip install fastapi uvicorn[standard] pydantic-settings openai python-docx openpyxl pytest
-pip install chromadb
-pip install sentence-transformers
+pip install fastembed
 ```
 
 ## 前端启动
@@ -75,13 +82,15 @@ http://127.0.0.1:5173
 ```text
 DOCS_ROOT=D:\vscode\动效\docs
 APP_DATA_DIR=./data
+EMBEDDING_PROVIDER=hash
 EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+HF_ENDPOINT=https://hf-mirror.com
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-如果没有配置 `OPENAI_API_KEY`，语义搜索仍然可用；点击 Ask AI 会返回明确的配置提示和引用来源。
+如果没有配置 `OPENAI_API_KEY`，检索仍然可用；点击 AI 回答会返回明确的配置提示和引用来源。
 
 ## API 快速检查
 
@@ -112,5 +121,5 @@ pytest
 1. 给 `POST /api/index/run` 增加进度事件。
 2. 给前端增加文档详情弹窗。
 3. 增加 PDF 解析。
-4. 把 Chroma 换成 PostgreSQL + pgvector。
+4. 把本地 SQLite 向量库换成 PostgreSQL + pgvector。
 5. 增加登录，让每个用户有自己的知识库。

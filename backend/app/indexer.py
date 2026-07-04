@@ -66,7 +66,8 @@ class Indexer:
                     skipped.append({"path": source_path, "reason": "empty"})
                     continue
 
-                vectors = self.embeddings.embed(chunks)
+                embedding_texts = ["%s\n%s" % (path.name, chunk) for chunk in chunks]
+                vectors = self.embeddings.embed(embedding_texts)
                 document_id = document_id_for_path(path)
                 self.vector_store.replace_document_chunks(
                     document_id=document_id,

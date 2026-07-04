@@ -122,8 +122,8 @@ function App() {
         <div className="status-grid">
           <Status icon={<Server size={17} />} label="后端" value={health?.ok ? "已连接" : "未连接"} />
           <Status icon={<BookOpen size={17} />} label="文档" value={`${documents.length} 个`} />
-          <Status icon={<Database size={17} />} label="切片" value={`${health?.chroma_count ?? 0} 个`} />
-          <Status icon={<Sparkles size={17} />} label="问答模型" value={health?.openai_configured ? "已配置" : "仅检索"} />
+          <Status icon={<Database size={17} />} label="切片" value={`${health?.chunk_count ?? health?.chroma_count ?? 0} 个`} />
+          <Status icon={<Sparkles size={17} />} label="向量模式" value={health?.embedding_provider || "未知"} />
         </div>
       </section>
 

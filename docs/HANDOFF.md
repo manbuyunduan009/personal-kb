@@ -26,8 +26,7 @@ Copy-Item .env.example .env
 
 ```powershell
 pip install fastapi uvicorn[standard] pydantic-settings openai python-docx openpyxl pytest
-pip install chromadb
-pip install sentence-transformers
+pip install fastembed
 ```
 
 ## 3. 配置后端
@@ -37,7 +36,9 @@ pip install sentence-transformers
 ```text
 DOCS_ROOT=D:\vscode\动效\docs
 APP_DATA_DIR=./data
+EMBEDDING_PROVIDER=hash
 EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+HF_ENDPOINT=https://hf-mirror.com
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
@@ -46,8 +47,10 @@ OPENAI_MODEL=gpt-4o-mini
 说明：
 
 - `DOCS_ROOT` 是要读取的本地资料目录，办公电脑路径可能不同。
+- `EMBEDDING_PROVIDER=hash` 用来先跑通项目，不需要下载模型；改成 `fastembed` 才是真实本地开源 embedding。
+- `HF_ENDPOINT` 用于模型下载。国内网络建议保留 `https://hf-mirror.com`。
 - `OPENAI_API_KEY` 不填时，只能做语义检索，不能生成 AI 回答。
-- 第一次索引时会下载开源 embedding 模型到本机缓存，不会下载到项目目录。
+- `EMBEDDING_PROVIDER=fastembed` 时，第一次索引会下载开源 embedding 模型到本机缓存，不会下载到项目目录。
 
 ## 4. 启动后端
 
@@ -70,7 +73,7 @@ ok: true
 vector_ready: true
 ```
 
-如果 `vector_ready` 是 `false`，先看 `vector_error`，通常是 `chromadb` 或 `sentence-transformers` 没装好。
+如果 `vector_ready` 是 `false`，先看 `vector_error`，通常是本地向量库初始化失败，或 `fastembed` 没装好。
 
 ## 5. 准备前端
 
@@ -112,7 +115,7 @@ frontend/dist/
 
 其中：
 
-- `backend/data/` 里是 SQLite 和 Chroma 本地向量库。
+- `backend/data/` 里是 SQLite 元数据和本地向量库。
 - `.env` 里可能有 API Key。
 - embedding 模型权重通常在用户目录缓存，例如 Hugging Face cache。
 
@@ -123,7 +126,7 @@ frontend/dist/
 进入后端虚拟环境后补装：
 
 ```powershell
-pip install chromadb sentence-transformers
+pip install fastembed
 ```
 
 ### 点击索引很慢
