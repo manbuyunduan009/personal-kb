@@ -20,15 +20,16 @@
 | 04 | Context Enriched | 检索到一个片段时，补上标题、章节、前后文，让 AI 不只看到孤立句子。 | 给 chunk 存 `chunk_header`、上文、下文。 |
 | 05 | Chunk Header | 入库前给每个切片加标题或章节主旨，提高检索匹配率。 | 从 Markdown 标题、章节行、文件名中推断块级标题。 |
 | 06 | Document Augmentation | 为原文块补充高频潜在问题，让“问题匹配问题”更容易命中。 | 先用规则生成潜在问题，不额外调用模型。 |
-| 07 | Query Transformation | 把用户模糊问题改写、泛化或拆成多个检索问题。 | 生成多个 query variant，多路检索后合并。 |
-| 08 | Rerank | 初筛多条结果，再用更细的规则或模型重排，选最可靠的 top 结果。 | 先用向量分 + 关键词重合度做轻量重排。 |
+| 07 | Query Transformation | 把用户模糊问题改写、泛化或拆成多个检索问题。 | 已做 v1：常规检索用规则 variant；Self-RAG 低分补救时可调用 LLM Query Rewrite。 |
+| 08 | Rerank | 初筛多条结果，再用更细的规则或模型重排，选最可靠的 top 结果。 | 已做 v1：向量分、关键词分、BM25 小加分、标题分、反馈分共同排序。 |
 | 09 | Sentence Window Retrieval | 命中核心句后自动向前后扩展，适合长文档和强上下文资料。 | 使用相邻 chunk 的前后窗口作为 prompt 上下文。 |
 | 10 | Context Compression | 检索结果太长时，先压缩再喂给大模型，减少噪声和 token 浪费。 | 根据问题关键词挑选相关句子，限制每条上下文长度。 |
 | 11 | Feedback Loop | 收集点赞、点踩、采用率，长期提升常用正确文档权重。 | 已做 v0：前端可反馈，后端存表，rerank 读取反馈分。 |
-| 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v2：低分时自动二次检索补救，并把补救过程返回前端。 |
-| 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v1：聊天接口写入 trace，前端展示最近诊断记录。 |
-| 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v1：统计检索通过率、问答通过率、拒答率、补救率、平均耗时和最近 trace 分布。 |
+| 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v3：低分时先用 LLM/规则改写 query，再扩大召回补救；仍不足再拒答。 |
+| 13 | RAG Trace | 记录每次问答的检索分数、补救状态、引用数量和耗时，让问题可以被诊断。 | 已做 v2：额外记录 LLM 改写、改写来源、召回方式，并在前端诊断面板展示。 |
+| 14 | Eval Report | 把“这次优化有没有变好”变成数字，而不是靠感觉判断。 | 已做 v2：支持保存报告、和基线对比，并统计最近 trace 的 LLM 改写率和召回方式分布。 |
 | 15 | Citation Check | 检查答案里的结论是否能被引用来源支撑，减少有引用但乱答。 | 已做 v0 预研：独立规则模块，先测试不拦截主流程。 |
+| 16 | SQLite FTS/BM25 | 用数据库全文检索补强专有名词、字段、编号等硬关键词召回。 | 已做 v1：`document_chunks_fts` + fallback keyword 表，和向量召回合并。 |
 
 ## 3. 模块状态和持续优化入口
 
@@ -42,15 +43,16 @@
 | Context Enriched | 已完成 v1 | chunk 元数据保存标题、上文窗口、下文窗口、摘要；回答时优先使用 parent context。 | `backend/app/chunking.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按标题/语义构造 parent，而不是固定 3 个 child 一组。 |
 | Parent-Child Chunk | 已完成 v1 | 每 3 个 child chunk 生成一个 parent context；索引和引用仍落在 child；AI 回答上下文优先使用 parent。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/vector_store.py`, `backend/app/rag.py` | 按章节、标题、表格边界构造 parent；根据问题类型动态控制 parent 长度。 |
 | Field-aware Retrieval | 已完成 v1 | 从文档表格/键值行提取文档级属性，把“项目/所属/负责人/日期/域名/编号”等字段传播到每个 chunk，并参与 embedding、关键词召回、rerank 和 prompt。 | `backend/app/chunking.py`, `backend/app/indexer.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 保留原始表格结构；给字段类型加权；把字段抽取规则配置化；支持更多业务字段。 |
-| Query Transformation | 已完成 v0 | 用户问题生成多个 query variant，多路检索后合并去重。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 改写问题；支持子问题拆解和多轮追问。 |
-| Hybrid Search | 已完成 v0 | 向量召回和关键词召回并行，合并候选后再 rerank。 | `backend/app/vector_store.py`, `backend/app/retrieval.py`, `backend/app/rag.py` | 换成 BM25/SQLite FTS；按字段加权；支持精确短语匹配。 |
-| Rerank | 已完成 v0 | 用向量分、关键词重合度、标题重合度、反馈分做轻量重排。 | `backend/app/retrieval.py` | 接 cross-encoder rerank 模型；按不同文档类型定制权重。 |
+| Query Transformation | 已完成 v1 | 常规检索用规则 query variant；Self-RAG 低分补救时调用 `query_rewrite.py` 做 LLM 改写，失败时回退规则。 | `backend/app/retrieval.py`, `backend/app/query_rewrite.py`, `backend/app/rag.py` | 支持子问题拆解；为多轮追问注入对话上下文；按问题类型决定是否调用 LLM。 |
+| SQLite FTS/BM25 | 已完成 v1 | 入库时同步写 `document_chunks_keyword` 和 `document_chunks_fts`；检索时调用 `keyword_search`，FTS5 可用时使用 BM25，不可用时降级关键词扫描。 | `backend/app/vector_store.py`, `backend/app/rag.py` | 给标题/字段/正文设置不同权重；支持精确短语；进一步优化中文分词。 |
+| Hybrid Search | 已完成 v1 | 向量召回、BM25/关键词召回并行，合并候选后 rerank；前端展示召回方式、BM25 分和命中关键词。 | `backend/app/vector_store.py`, `backend/app/retrieval.py`, `backend/app/rag.py`, `frontend/src/main.tsx` | 按问题类型调权重；把 topK 候选明细写进 trace。 |
+| Rerank | 已完成 v1 | 用向量分、关键词重合度、标题重合度、BM25 小加分、反馈分做轻量重排。 | `backend/app/retrieval.py` | 接 cross-encoder rerank 模型；按不同文档类型定制权重。 |
 | Sentence Window Retrieval | 已完成 v0 | 回答时把命中 chunk 的前后窗口一起放进上下文。 | `backend/app/rag.py` | 根据命中句定位更精确的句子窗口；长文档按段落窗口扩展。 |
 | Context Compression | 已完成 v0 | 超长上下文按问题关键词挑相关句子，并限制长度。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 压缩；保留表格行标题；按引用来源分别压缩。 |
 | Feedback Loop | 已完成 v0 | 前端对引用/检索结果点赞点踩；后端存 `feedback` 表；rerank 用反馈分小幅加权。 | `backend/app/db.py`, `backend/app/main.py`, `backend/app/retrieval.py`, `frontend/src/main.tsx` | 加反馈备注；按问题相似度加权；做“已反馈”状态；加入评测报表。 |
-| Self-RAG | 已完成 v2 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时生成补救 query、扩大召回再检索；补救后仍不足才拒答；前端展示 Self-RAG 检查状态。 | `backend/app/rag.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 接 LLM query rewrite；增加按问题类型的阈值；让模型做引用一致性检查；记录补救命中率。 |
-| RAG Trace | 已完成 v1 | 每次 `/api/chat` 写入 `rag_traces` 表，记录问题、答案预览、拒答状态、引用数量、引用标题、Self-RAG 状态、初始/最终分数、补救 query 和耗时；前端右侧展示最近诊断记录。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；统计命中率、拒答率、补救率和平均耗时；支持按问题搜索 trace。 |
-| Eval Report | 已完成 v1 | 新增脚本跑固定问题集，并输出 search/chat pass rate、拒答率、补救率、耗时和 trace 分布。 | `backend/scripts/eval_report.py`, `backend/tests/test_eval_report.py` | 输出 JSON 文件；做趋势对比；把 Citation Check 指标并入报告。 |
+| Self-RAG | 已完成 v3 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时使用 LLM/规则 query rewrite，扩大召回再检索；补救后仍不足才拒答。 | `backend/app/rag.py`, `backend/app/query_rewrite.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 增加按问题类型的阈值；让模型做引用一致性检查；记录补救成功案例。 |
+| RAG Trace | 已完成 v2 | 每次 `/api/chat` 写入诊断记录；额外记录改写来源、是否使用 LLM 改写、改写错误、召回方式；前端展示这些诊断信息。 | `backend/app/db.py`, `backend/app/main.py`, `frontend/src/api.ts`, `frontend/src/main.tsx` | 增加 trace 详情页；记录 topK 候选列表；支持按问题搜索 trace。 |
+| Eval Report | 已完成 v2 | 新增脚本跑固定问题集，支持 `--save` 保存 JSON、`--compare` 对比基线，并输出 trace 改写率和召回方式分布。 | `backend/scripts/eval_report.py`, `backend/tests/test_eval_report.py`, `backend/reports/.gitignore` | 把 Citation Check 指标并入报告；做趋势图；保存多次评测快照。 |
 | Citation Check | 已完成 v0 预研 | 新增独立规则模块，用答案 claim 和引用证据做词面支持度检查；当前只测试，不拦截答案。 | `backend/app/citation_check.py`, `backend/tests/test_citation_check.py` | 接入 trace；检查回答是否每个关键结论都有来源；低支持度时给前端显示风险提示。 |
 
 ## 4. 已完成模块的实现说明
@@ -374,6 +376,84 @@ cd D:\vscode\动效\personal-kb\backend
 - 接入 `/api/chat` 的 trace，记录每次回答的 citation support 状态。
 - 对低支持度答案在前端显示“引用支撑不足”提示。
 - 后续再用 LLM 做 claim-by-claim 检查，但要保留规则版作为低成本底线。
+
+### 4.14 SQLite FTS/BM25
+
+做法：
+
+1. 入库时除了保存向量，还同步写入 `document_chunks_keyword`。
+2. 如果本机 SQLite 支持 FTS5，再写入 `document_chunks_fts`。
+3. 检索时先走 `keyword_search`，FTS5 可用时用 `bm25()` 排序，不可用时回退到普通关键词扫描。
+4. BM25 命中的结果和向量召回结果按 chunk id 合并。
+5. rerank 时给 BM25 命中一个小加分 `0.04`，让硬关键词有影响力，但不压过语义相关性。
+
+为什么这样做：
+
+- 向量检索适合“意思相近”，但对项目名、编号、字段名、域名、人名这类硬词不一定稳定。
+- BM25 像搜索引擎，适合“文档里真的出现过这个词”的场景。
+- 两者合并后，既能找语义，也能抓专有名词。
+
+当前边界：
+
+- 中文目前主要靠 2/3 字 ngram 辅助，不是真正中文分词。
+- BM25 只能证明词出现过，不能证明答案一定正确。
+- 旧索引库需要重新索引，才能把历史 chunk 写入关键词表。
+
+后续你可以单独优化：
+
+- 给标题、字段、正文设置不同 BM25 权重。
+- 支持用户输入引号时做精确短语搜索。
+- 把 topK 候选和分数拆解写进 trace，方便看 BM25 是如何影响排序的。
+
+### 4.15 LLM Query Rewrite
+
+做法：
+
+1. 常规检索仍然使用规则 `query_variants`，不额外调用 AI。
+2. 当 Self-RAG 判断首次检索证据不足时，调用 `rewrite_queries`。
+3. 有 API key 时让在线模型生成更适合检索的 query；没有 key 或调用失败时回退规则 query。
+4. 改写结果会清洗、去重、限长、限量，避免模型输出解释文本。
+5. `self_rag` 和 trace 会记录是否使用 LLM、改写来源、改写错误和最终补救 query。
+
+为什么这样做：
+
+- 用户的问题可能太短、太口语、缺少业务词。
+- LLM 改写不是回答问题，而是帮系统“换几种搜索问法”。
+- 只在低分补救时调用，可以控制成本和延迟。
+
+当前边界：
+
+- LLM 有可能改偏，所以必须保留 fallback query。
+- 当前还没有做复杂问题的子问题拆解和多轮上下文理解。
+- 如果在线模型慢，低分问题的响应会变慢。
+
+后续你可以单独优化：
+
+- 让 LLM 输出结构化结果：明确化 query、关键词 query、子问题 query。
+- 按问题类型决定是否启用 LLM 改写。
+- 把 query rewrite 前后的命中变化纳入 Eval Report。
+
+### 4.16 Eval Report 对比
+
+做法：
+
+1. `eval_report.py --save reports/latest.json` 保存完整评测结果。
+2. `eval_report.py --compare reports/baseline.json` 和指定基线对比。
+3. 对比指标包括命中率、问答通过率、拒答率、补救率、平均耗时和 API 失败数。
+4. 报告还会统计最近 trace 的 LLM 改写率和召回方式分布。
+5. `backend/reports/.gitignore` 会忽略真实报告 JSON，避免把本地评测数据提交到仓库。
+
+为什么这样做：
+
+- 工业版 RAG 优化必须看趋势，不能只看单次结果。
+- BM25、Query Rewrite、阈值调整都可能一部分问题变好、一部分问题变差。
+- 对比报告可以帮助你判断这次改动是整体提升，还是只解决了某个样例。
+
+后续你可以单独优化：
+
+- 保存多次评测快照，生成趋势表。
+- 加 Citation Check 的 supported/warning/unsupported 比例。
+- 把每道题的 topK 变化也写进报告。
 
 ## 5. 目标
 

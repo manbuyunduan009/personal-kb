@@ -8,6 +8,7 @@ import urllib.parse
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 try:
@@ -19,6 +20,14 @@ except ImportError:  # pragma: no cover - used when imported as scripts.eval_rep
 
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+COMPARISON_METRICS = (
+    ("search_pass_rate", "rate"),
+    ("chat_pass_rate", "rate"),
+    ("refusal_rate", "rate"),
+    ("rescue_rate", "rate"),
+    ("avg_latency_ms", "ms"),
+    ("api_failure_count", "count"),
+)
 REFUSAL_MARKERS = (
     "文档中没有找到依据",
     "没有找到依据",
@@ -169,11 +178,19 @@ def summarize_traces(traces: List[Dict[str, Any]]) -> Dict[str, Any]:
     refusal_count = sum(1 for trace in traces if bool(trace.get("is_refusal", False)))
     rescue_attempted_count = sum(1 for trace in traces if bool(trace.get("rescue_attempted", False)))
     rescued_count = sum(1 for trace in traces if bool(trace.get("rescued", False)))
+    llm_rewrite_count = sum(1 for trace in traces if bool(trace.get("query_rewrite_used_llm", False)))
+    retrieval_mode_counts: Counter = Counter()
+    for trace in traces:
+        modes = trace.get("retrieval_modes", [])
+        if isinstance(modes, list):
+            retrieval_mode_counts.update(str(mode) for mode in modes if mode)
     return {
         "recent_trace_total": len(traces),
         "recent_trace_status_distribution": dict(status_counts),
         "recent_trace_refusal_rate": rate(refusal_count, len(traces)),
         "recent_trace_rescue_rate": rate(rescued_count, rescue_attempted_count),
+        "recent_trace_llm_rewrite_rate": rate(llm_rewrite_count, len(traces)),
+        "recent_trace_retrieval_mode_distribution": dict(retrieval_mode_counts),
         "recent_trace_avg_latency_ms": average_ms(trace.get("latency_ms") for trace in traces),
     }
 
@@ -259,6 +276,113 @@ def format_percent(value: float) -> str:
     return "%.1f%%" % (value * 100)
 
 
+def metric_number(summary: Dict[str, Any], metric: str) -> Optional[float]:
+    value = summary.get(metric)
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_comparison(
+    current_report: Dict[str, Any],
+    baseline_report: Dict[str, Any],
+    baseline_path: str = "",
+) -> Dict[str, Any]:
+    current_summary = current_report.get("summary", {})
+    baseline_summary = baseline_report.get("summary", {})
+    current_summary = current_summary if isinstance(current_summary, dict) else {}
+    baseline_summary = baseline_summary if isinstance(baseline_summary, dict) else {}
+
+    metrics = {}
+    for metric, unit in COMPARISON_METRICS:
+        current_value = metric_number(current_summary, metric)
+        baseline_value = metric_number(baseline_summary, metric)
+        delta = None
+        if current_value is not None and baseline_value is not None:
+            delta = round(current_value - baseline_value, 4)
+        metrics[metric] = {
+            "unit": unit,
+            "baseline": baseline_value,
+            "current": current_value,
+            "delta": delta,
+        }
+
+    return {
+        "baseline_path": baseline_path,
+        "baseline_generated_at": baseline_report.get("generated_at", ""),
+        "current_generated_at": current_report.get("generated_at", ""),
+        "metrics": metrics,
+    }
+
+
+def load_report(path: str) -> Dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as file:
+        report = json.load(file)
+    if not isinstance(report, dict):
+        raise ValueError("Report JSON must be an object.")
+    return report
+
+
+def save_report(report: Dict[str, Any], path: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", encoding="utf-8") as file:
+        json.dump(report, file, ensure_ascii=False, indent=2)
+        file.write("\n")
+
+
+def format_metric_value(value: Optional[float], unit: str) -> str:
+    if value is None:
+        return "n/a"
+    if unit == "rate":
+        return format_percent(value)
+    if unit == "ms":
+        return "%sms" % int(round(value))
+    if unit == "count":
+        return str(int(round(value)))
+    return str(value)
+
+
+def format_metric_delta(value: Optional[float], unit: str) -> str:
+    if value is None:
+        return "n/a"
+    sign = "+" if value > 0 else ""
+    if unit == "rate":
+        return "%s%.1fpp" % (sign, value * 100)
+    if unit == "ms":
+        return "%s%sms" % (sign, int(round(value)))
+    if unit == "count":
+        return "%s%s" % (sign, int(round(value)))
+    return "%s%s" % (sign, value)
+
+
+def format_comparison(comparison: Dict[str, Any]) -> List[str]:
+    lines = [
+        "",
+        "Comparison:",
+        "baseline_path: %s" % (comparison.get("baseline_path") or "unknown"),
+        "baseline_generated_at: %s" % (comparison.get("baseline_generated_at") or "unknown"),
+    ]
+    metrics = comparison.get("metrics", {})
+    metrics = metrics if isinstance(metrics, dict) else {}
+    for metric, unit in COMPARISON_METRICS:
+        item = metrics.get(metric, {})
+        item = item if isinstance(item, dict) else {}
+        lines.append(
+            "%s: %s -> %s (%s)"
+            % (
+                metric,
+                format_metric_value(item.get("baseline"), unit),
+                format_metric_value(item.get("current"), unit),
+                format_metric_delta(item.get("delta"), unit),
+            )
+        )
+    return lines
+
+
 def format_status_counts(counts: Dict[str, int]) -> str:
     if not counts:
         return "none"
@@ -331,10 +455,16 @@ def format_text_report(report: Dict[str, Any]) -> str:
         % format_status_counts(summary["recent_trace_status_distribution"]),
         "recent_trace_refusal_rate: %s" % format_percent(summary["recent_trace_refusal_rate"]),
         "recent_trace_rescue_rate: %s" % format_percent(summary["recent_trace_rescue_rate"]),
+        "recent_trace_llm_rewrite_rate: %s" % format_percent(summary["recent_trace_llm_rewrite_rate"]),
+        "recent_trace_retrieval_mode_distribution: %s"
+        % format_status_counts(summary["recent_trace_retrieval_mode_distribution"]),
         "recent_trace_avg_latency_ms: %s" % summary["recent_trace_avg_latency_ms"],
     ]
     if summary.get("trace_error"):
         lines.append("trace_error: %s" % summary["trace_error"])
+
+    if isinstance(report.get("comparison"), dict):
+        lines.extend(format_comparison(report["comparison"]))
 
     lines.extend(["", "Search cases:"])
     for record in report["search_cases"]:
@@ -366,12 +496,19 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--search-limit", type=int, default=3)
     parser.add_argument("--trace-limit", type=int, default=20)
     parser.add_argument("--json", action="store_true", help="Print the full report as JSON.")
+    parser.add_argument("--save", help="Save the current report JSON to this path.")
+    parser.add_argument("--compare", help="Compare the current report with a saved baseline JSON.")
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     report = build_report(args.base_url, args.search_limit, args.trace_limit)
+    if args.compare:
+        baseline = load_report(args.compare)
+        report["comparison"] = build_comparison(report, baseline, args.compare)
+    if args.save:
+        save_report(report, args.save)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

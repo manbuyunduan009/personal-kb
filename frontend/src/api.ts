@@ -41,6 +41,10 @@ export type SearchHit = {
   vector_score?: number;
   keyword_score?: number;
   keyword_recall_score?: number;
+  keyword_backend?: string;
+  bm25_score?: number;
+  bm25_bonus?: number;
+  matched_keywords?: string[];
   hybrid_bonus?: number;
   feedback_score?: number;
   feedback_bonus?: number;
@@ -64,6 +68,10 @@ export type SelfRagStatus = {
   rescue_attempted: boolean;
   rescued: boolean;
   rescue_queries: string[];
+  rescue_query_source?: string;
+  query_rewrite_used_llm?: boolean;
+  query_rewrite_error?: string;
+  retrieval_modes?: string[];
   initial_best_score: number;
   final_best_score: number;
   min_evidence_score: number;
@@ -85,6 +93,10 @@ export type RagTrace = {
   min_evidence_score: number;
   evidence_count: number;
   rescue_queries: string[];
+  rescue_query_source: string;
+  query_rewrite_used_llm: boolean;
+  query_rewrite_error: string;
+  retrieval_modes: string[];
   latency_ms: number;
   created_at: string;
 };

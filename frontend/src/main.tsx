@@ -272,7 +272,12 @@ function App() {
                 <b>{selfRag.final_best_score.toFixed(2)}</b>
                 <span>证据阈值</span>
                 <b>{selfRag.min_evidence_score.toFixed(2)}</b>
+                <span>召回方式</span>
+                <b>{formatList(selfRag.retrieval_modes || []) || "未记录"}</b>
+                <span>改写来源</span>
+                <b>{selfRag.query_rewrite_used_llm ? "LLM 改写" : selfRag.rescue_query_source || "规则/未触发"}</b>
               </div>
+              {selfRag.query_rewrite_error && <p className="diagnostic-note">{selfRag.query_rewrite_error}</p>}
               {selfRag.rescue_attempted && selfRag.rescue_queries.length > 0 && (
                 <div className="rescue-queries">
                   {selfRag.rescue_queries.map((query) => (
@@ -337,11 +342,21 @@ function App() {
                 {(hit.matched_query || hit.keyword_score !== undefined) && (
                   <small>
                     {hit.retrieval_mode ? `召回：${retrievalModeLabel(hit.retrieval_mode)}` : ""}
+                    {hit.keyword_backend === "fts5" ? " · BM25" : ""}
                     {hit.matched_query ? ` · 匹配问题：${hit.matched_query}` : ""}
                     {hit.keyword_score !== undefined ? ` · 关键词分 ${hit.keyword_score.toFixed(2)}` : ""}
                     {hit.keyword_recall_score ? ` · 关键词召回 ${hit.keyword_recall_score.toFixed(2)}` : ""}
+                    {hit.bm25_score !== undefined ? ` · BM25 ${hit.bm25_score.toFixed(2)}` : ""}
+                    {hit.bm25_bonus ? ` · BM25加分 ${hit.bm25_bonus.toFixed(2)}` : ""}
                     {hit.feedback_score ? ` · 反馈分 ${hit.feedback_score}` : ""}
                   </small>
+                )}
+                {hit.matched_keywords && hit.matched_keywords.length > 0 && (
+                  <div className="keyword-tags">
+                    {hit.matched_keywords.slice(0, 8).map((keyword) => (
+                      <span key={keyword}>{keyword}</span>
+                    ))}
+                  </div>
                 )}
                 <p>{hit.content}</p>
                 <FeedbackActions
@@ -378,6 +393,11 @@ function App() {
                   {trace.rescue_attempted ? ` · 补救${trace.rescued ? "成功" : "未命中"}` : " · 未补救"}
                   {` · 引用 ${trace.citation_count}`}
                 </small>
+                <small>
+                  {trace.retrieval_modes.length > 0 ? `召回 ${formatList(trace.retrieval_modes)}` : "召回未记录"}
+                  {trace.rescue_query_source ? ` · 改写 ${trace.query_rewrite_used_llm ? "LLM" : trace.rescue_query_source}` : ""}
+                </small>
+                {trace.query_rewrite_error && <small>{trace.query_rewrite_error}</small>}
                 {trace.cited_titles.length > 0 && <small>{trace.cited_titles.join(" / ")}</small>}
               </article>
             ))}
@@ -390,8 +410,14 @@ function App() {
 
 function retrievalModeLabel(mode: string) {
   if (mode === "hybrid") return "混合";
+  if (mode === "hybrid+bm25") return "混合+BM25";
+  if (mode === "bm25") return "BM25";
   if (mode === "keyword") return "关键词";
   return "向量";
+}
+
+function formatList(values: string[]) {
+  return values.map(retrievalModeLabel).join(" / ");
 }
 
 function selfRagStatusLabel(status: SelfRagStatus["status"] | "unknown" | string) {

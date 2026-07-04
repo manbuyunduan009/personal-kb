@@ -1,7 +1,12 @@
 from scripts.eval_report import (
+    build_comparison,
     evaluate_chat_case,
     evaluate_search_case,
+    format_text_report,
+    load_report,
+    parse_args,
     rate,
+    save_report,
     summarize_results,
 )
 
@@ -89,6 +94,8 @@ def test_summarize_results_counts_pass_rates_failures_and_traces():
             "is_refusal": True,
             "rescue_attempted": True,
             "rescued": False,
+            "query_rewrite_used_llm": True,
+            "retrieval_modes": ["hybrid+bm25"],
             "latency_ms": 300,
         },
     ]
@@ -105,4 +112,119 @@ def test_summarize_results_counts_pass_rates_failures_and_traces():
         "insufficient_after_rescue": 1,
         "sufficient": 1,
     }
+    assert summary["recent_trace_llm_rewrite_rate"] == 0.5
+    assert summary["recent_trace_retrieval_mode_distribution"] == {"hybrid+bm25": 1}
     assert summary["recent_trace_avg_latency_ms"] == 200
+
+
+def test_build_comparison_calculates_core_metric_deltas():
+    baseline = {
+        "generated_at": "2026-07-04T01:00:00+00:00",
+        "summary": {
+            "search_pass_rate": 0.8,
+            "chat_pass_rate": 0.75,
+            "refusal_rate": 0.25,
+            "rescue_rate": 0.5,
+            "avg_latency_ms": 1200,
+            "api_failure_count": 2,
+        },
+    }
+    current = {
+        "generated_at": "2026-07-04T02:00:00+00:00",
+        "summary": {
+            "search_pass_rate": 1.0,
+            "chat_pass_rate": 0.5,
+            "refusal_rate": 0.5,
+            "rescue_rate": 0.25,
+            "avg_latency_ms": 900,
+            "api_failure_count": 0,
+        },
+    }
+
+    comparison = build_comparison(current, baseline, "reports/baseline.json")
+
+    assert comparison["baseline_path"] == "reports/baseline.json"
+    assert comparison["baseline_generated_at"] == "2026-07-04T01:00:00+00:00"
+    assert comparison["metrics"]["search_pass_rate"]["delta"] == 0.2
+    assert comparison["metrics"]["chat_pass_rate"]["delta"] == -0.25
+    assert comparison["metrics"]["refusal_rate"]["delta"] == 0.25
+    assert comparison["metrics"]["rescue_rate"]["delta"] == -0.25
+    assert comparison["metrics"]["avg_latency_ms"]["delta"] == -300
+    assert comparison["metrics"]["api_failure_count"]["delta"] == -2
+
+
+def test_save_and_load_report_round_trip(tmp_path):
+    path = tmp_path / "nested" / "eval-report.json"
+    report = {
+        "generated_at": "2026-07-04T02:00:00+00:00",
+        "summary": {"search_pass_rate": 1.0},
+    }
+
+    save_report(report, str(path))
+    loaded = load_report(str(path))
+
+    assert loaded == report
+
+
+def test_parse_args_accepts_save_and_compare_paths():
+    args = parse_args(
+        [
+            "--save",
+            "backend/reports/current.json",
+            "--compare",
+            "backend/reports/baseline.json",
+        ]
+    )
+
+    assert args.save == "backend/reports/current.json"
+    assert args.compare == "backend/reports/baseline.json"
+
+
+def test_format_text_report_includes_comparison_section():
+    baseline = {
+        "generated_at": "2026-07-04T01:00:00+00:00",
+        "summary": {
+            "search_pass_rate": 0.5,
+            "chat_pass_rate": 0.5,
+            "refusal_rate": 0.0,
+            "rescue_rate": 0.0,
+            "avg_latency_ms": 1000,
+            "api_failure_count": 1,
+        },
+    }
+    report = {
+        "base_url": "http://127.0.0.1:8000",
+        "generated_at": "2026-07-04T02:00:00+00:00",
+        "summary": {
+            "search_total": 1,
+            "search_passed": 1,
+            "search_pass_rate": 1.0,
+            "chat_total": 1,
+            "chat_passed": 1,
+            "chat_pass_rate": 1.0,
+            "refusal_count": 0,
+            "refusal_rate": 0.0,
+            "rescue_attempted_count": 0,
+            "rescued_count": 0,
+            "rescue_rate": 0.0,
+            "avg_latency_ms": 800,
+            "api_failure_count": 0,
+            "recent_trace_total": 0,
+            "recent_trace_status_distribution": {},
+            "recent_trace_refusal_rate": 0.0,
+            "recent_trace_rescue_rate": 0.0,
+            "recent_trace_llm_rewrite_rate": 0.0,
+            "recent_trace_retrieval_mode_distribution": {},
+            "recent_trace_avg_latency_ms": 0,
+            "trace_error": "",
+        },
+        "search_cases": [],
+        "chat_cases": [],
+    }
+    report["comparison"] = build_comparison(report, baseline, "baseline.json")
+
+    text = format_text_report(report)
+
+    assert "Comparison:" in text
+    assert "search_pass_rate: 50.0% -> 100.0% (+50.0pp)" in text
+    assert "avg_latency_ms: 1000ms -> 800ms (-200ms)" in text

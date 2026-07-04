@@ -293,6 +293,13 @@ h3 {
   font-size: 12px;
 }
 
+.diagnostic-note {
+  margin: 10px 0 0;
+  color: #7a3525;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .citation {
   padding: 12px 0;
   border-top: 1px solid rgba(32, 33, 29, 0.18);
@@ -419,6 +426,23 @@ h3 {
   padding: 9px 10px;
   border: 1px solid rgba(32, 33, 29, 0.25);
   background: #ebe3d2;
+}
+
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.keyword-tags span {
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid rgba(32, 33, 29, 0.2);
+  background: #ebe3d2;
+  color: #4a4840;
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .hit p {

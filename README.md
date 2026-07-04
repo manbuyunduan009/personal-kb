@@ -18,7 +18,8 @@ personal-kb
 │  │  ├─ parsers.py       # md/docx/xlsx 解析
 │  │  ├─ chunking.py      # 文本切片
 │  │  ├─ indexer.py       # 扫描 docs 并入库
-│  │  ├─ vector_store.py  # 本地 SQLite 向量库
+│  │  ├─ vector_store.py  # 本地 SQLite 向量库 + FTS/BM25 关键词库
+│  │  ├─ query_rewrite.py # LLM 检索问题改写
 │  │  └─ rag.py           # 检索 + AI 问答
 │  └─ tests
 └─ frontend
@@ -33,6 +34,7 @@ personal-kb
 - [交付说明](docs/HANDOFF.md)：换电脑、部署到办公电脑、首次验收、常见问题。
 - [RAG 质量说明](docs/RAG_QUALITY.md)：为什么 RAG 容易效果不好，以及本项目的质量路线。
 - [RAG 优化计划](docs/RAG_OPTIMIZATION_PLAN.md)：根据截图整理的 Small-to-Big、Chunk Header、Query Transformation、Rerank、反馈闭环等优化路线。
+- [RAG 工业版 Playbook](docs/RAG_INDUSTRIAL_PLAYBOOK.md)：记录每批优化的顺序、原因、规则、测试结果和下一步。
 
 ## 后端启动
 
@@ -108,7 +110,7 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/search -ContentType "ap
 
 ```powershell
 cd D:\vscode\动效\personal-kb\backend
-pytest
+.\.venv\Scripts\python.exe -m pytest
 ```
 
 测试覆盖：
@@ -118,6 +120,9 @@ pytest
 - Excel sheet 和行内容解析
 - 文本切片 overlap
 - 重复索引时跳过未变化文件
+- SQLite FTS/BM25 关键词索引
+- LLM query rewrite 清洗和回退
+- Self-RAG 补救、trace 和评测报告
 
 ## 检索评测
 
@@ -129,7 +134,14 @@ cd D:\vscode\动效\personal-kb\backend
 python scripts\eval_retrieval.py
 ```
 
-脚本会检查 5 个检索问题是否命中预期文档，并检查问答是否带引用来源、无依据问题是否拒答。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索和回答有没有变好。
+脚本会检查固定检索问题是否命中预期文档，并检查问答是否带引用来源、无依据问题是否拒答。现在默认 `hash` 模式用于验证链路；后面切到 `fastembed` 后，也用同一个脚本判断检索和回答有没有变好。
+
+需要保存并对比评测报告时：
+
+```powershell
+python scripts\eval_report.py --save reports\baseline.json
+python scripts\eval_report.py --compare reports\baseline.json --save reports\current.json
+```
 
 ## 下一步练习
 

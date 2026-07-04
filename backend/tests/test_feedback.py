@@ -36,6 +36,10 @@ def test_rag_trace_records_answer_diagnostics(tmp_path: Path):
                 "final_best_score": 0.18,
                 "min_evidence_score": 0.3,
                 "evidence_count": 0,
+                "rescue_query_source": "llm",
+                "query_rewrite_used_llm": True,
+                "query_rewrite_error": "",
+                "retrieval_modes": ["hybrid+bm25"],
             },
         },
         latency_ms=1234,
@@ -49,6 +53,10 @@ def test_rag_trace_records_answer_diagnostics(tmp_path: Path):
     assert traces[0]["rescued"] is False
     assert traces[0]["final_best_score"] == 0.18
     assert traces[0]["rescue_queries"] == ["火星移民方案预算是多少"]
+    assert traces[0]["rescue_query_source"] == "llm"
+    assert traces[0]["query_rewrite_used_llm"] is True
+    assert traces[0]["query_rewrite_error"] == ""
+    assert traces[0]["retrieval_modes"] == ["hybrid+bm25"]
     assert traces[0]["latency_ms"] == 1234
 
 

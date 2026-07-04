@@ -66,12 +66,14 @@ def rerank_hits(
             0.0,
         )
         hybrid_bonus = min(keyword_recall_score * 0.06, 0.08)
+        bm25_bonus = 0.04 if item.get("bm25_score") is not None else 0.0
         feedback_bonus = max(min(feedback_score * 0.04, 0.12), -0.12)
         final_score = (
             (vector_score * 0.56)
             + (keyword_score * 0.24)
             + (header_score * 0.08)
             + hybrid_bonus
+            + bm25_bonus
             + feedback_bonus
         )
 
@@ -79,6 +81,7 @@ def rerank_hits(
         item["keyword_score"] = keyword_score
         item["keyword_recall_score"] = keyword_recall_score
         item["hybrid_bonus"] = hybrid_bonus
+        item["bm25_bonus"] = bm25_bonus
         item["feedback_score"] = feedback_score
         item["feedback_bonus"] = feedback_bonus
         item["score"] = final_score

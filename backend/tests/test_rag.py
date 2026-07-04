@@ -91,7 +91,7 @@ def test_answer_stops_when_evidence_score_is_too_low():
     service = RagService(
         embeddings=FakeEmbeddings(),
         vector_store=FakeVectorStore([make_hit(0.1)]),
-        openai_api_key="unused",
+        openai_api_key="",
         openai_base_url="https://example.com/v1",
         openai_model="test-model",
         min_evidence_score=0.3,
@@ -167,7 +167,7 @@ def test_structured_fields_do_not_unlock_unrelated_low_score_questions():
     service = RagService(
         embeddings=FakeEmbeddings(),
         vector_store=FakeVectorStore([hit]),
-        openai_api_key="unused",
+        openai_api_key="",
         openai_base_url="https://example.com/v1",
         openai_model="test-model",
         min_evidence_score=0.3,
@@ -225,3 +225,56 @@ def test_answer_rescues_low_initial_retrieval_by_expanding_search():
     assert result["self_rag"]["rescued"] is True
     assert result["self_rag"]["initial_best_score"] < 0.3
     assert result["self_rag"]["final_best_score"] >= 0.3
+
+
+def test_answer_records_llm_query_rewrite_metadata(monkeypatch):
+    def fake_rewrite_queries(**kwargs):
+        return {
+            "queries": ["产品经理 使用对象"],
+            "used_llm": True,
+            "error": None,
+        }
+
+    monkeypatch.setattr("app.rag.rewrite_queries", fake_rewrite_queries)
+    low_hits = [
+        make_hit(
+            0.05,
+            content="部署说明和环境变量。",
+            metadata={
+                "title": "部署.md",
+                "source_path": "部署.md",
+                "chunk_index": index,
+                "chunk_header": "部署",
+                "summary": "部署说明",
+            },
+            hit_id="deploy:%s" % index,
+        )
+        for index in range(25)
+    ]
+    rescued_hit = make_hit(
+        0.82,
+        content="产品经理负责验收活动专题和小程序页面。",
+        metadata={
+            "title": "验收助手用户.md",
+            "source_path": "验收助手用户.md",
+            "chunk_index": 1,
+            "chunk_header": "使用对象",
+            "summary": "产品经理负责验收活动专题和小程序页面。",
+        },
+        hit_id="user:1",
+    )
+    service = RagService(
+        embeddings=FakeEmbeddings(),
+        vector_store=FakeVectorStore(low_hits + [rescued_hit]),
+        openai_api_key="fake-key",
+        openai_base_url="https://example.com/v1",
+        openai_model="test-model",
+        min_evidence_score=0.3,
+    )
+
+    result = service.answer("这个工具主要面向哪些角色？")
+
+    assert result["self_rag"]["status"] == "rescued"
+    assert result["self_rag"]["query_rewrite_used_llm"] is True
+    assert result["self_rag"]["rescue_query_source"] == "llm"
+    assert result["self_rag"]["rescue_queries"] == ["产品经理 使用对象"]

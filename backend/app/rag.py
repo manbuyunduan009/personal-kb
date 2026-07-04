@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from openai import OpenAI, OpenAIError
 
 from .embeddings import EmbeddingProvider
+from .query_rewrite import rewrite_queries
 from .retrieval import compress_context, format_field_facts, keyword_recall_hits, query_variants, rerank_hits
 from .vector_store import VectorStore
 
@@ -109,7 +110,7 @@ class RagService:
 
         all_chunks = self.vector_store.list_chunks()
         for variant in variants:
-            for hit in keyword_recall_hits(variant, all_chunks, limit=expanded_limit):
+            for hit in self._keyword_hits(variant, all_chunks, expanded_limit):
                 key = str(hit.get("id") or "%s:%s" % (
                     hit["metadata"].get("document_id", ""),
                     hit["metadata"].get("chunk_index", ""),
@@ -124,9 +125,32 @@ class RagService:
                     float(existing.get("keyword_recall_score", 0.0)),
                     float(hit.get("keyword_recall_score", 0.0)),
                 )
+                if hit.get("bm25_score") is not None:
+                    existing["bm25_score"] = hit.get("bm25_score")
+                if hit.get("keyword_backend"):
+                    existing["keyword_backend"] = hit.get("keyword_backend")
+                if hit.get("matched_keywords"):
+                    existing["matched_keywords"] = hit.get("matched_keywords")
                 existing["retrieval_mode"] = "hybrid"
 
         return rerank_hits(original_query, list(merged.values()), limit=limit, feedback_scores=self.feedback_scores)
+
+    def _keyword_hits(
+        self,
+        variant: str,
+        all_chunks: List[Dict[str, object]],
+        limit: int,
+    ) -> List[Dict[str, object]]:
+        hits: List[Dict[str, object]] = []
+        if hasattr(self.vector_store, "keyword_search"):
+            hits = self.vector_store.keyword_search(variant, limit=limit)
+        if not hits:
+            hits = keyword_recall_hits(variant, all_chunks, limit=limit)
+
+        for hit in hits:
+            hit.setdefault("score", 0.0)
+            hit.setdefault("retrieval_mode", "keyword")
+        return hits
 
     def answer(self, question: str) -> Dict[str, object]:
         hits = self.search(question, limit=5)
@@ -139,10 +163,12 @@ class RagService:
             initial_best_score=initial_best_score,
             final_best_score=initial_best_score,
             evidence_count=len(evidence_hits),
+            retrieval_modes=self._retrieval_modes(hits),
         )
 
         if not evidence_hits:
-            rescue_queries = self._rescue_queries(question, hits)
+            rescue_plan = self._rescue_query_plan(question)
+            rescue_queries = rescue_plan["queries"]
             if rescue_queries:
                 rescued_hits = self._search_with_variants(
                     original_query=question,
@@ -164,6 +190,10 @@ class RagService:
                     initial_best_score=initial_best_score,
                     final_best_score=final_best_score,
                     evidence_count=len(evidence_hits),
+                    rescue_query_source=str(rescue_plan["source"]),
+                    query_rewrite_used_llm=bool(rescue_plan["used_llm"]),
+                    query_rewrite_error=str(rescue_plan["error"] or ""),
+                    retrieval_modes=self._retrieval_modes(rescued_hits or hits),
                 )
         citations = [self._citation_from_hit(hit) for hit in evidence_hits]
 
@@ -228,7 +258,24 @@ class RagService:
             "self_rag": self_rag,
         }
 
-    def _rescue_queries(self, question: str, initial_hits: List[Dict[str, object]]) -> List[str]:
+    def _rescue_query_plan(self, question: str) -> Dict[str, object]:
+        fallback = self._rule_rescue_queries(question)
+        rewrite = rewrite_queries(
+            question=question,
+            fallback_queries=fallback,
+            api_key=self.openai_api_key,
+            base_url=self.openai_base_url,
+            model=self.openai_model,
+            max_queries=8,
+        )
+        return {
+            "queries": rewrite["queries"],
+            "used_llm": rewrite["used_llm"],
+            "error": rewrite["error"],
+            "source": "llm" if rewrite["used_llm"] else "rules",
+        }
+
+    def _rule_rescue_queries(self, question: str) -> List[str]:
         candidates: List[str] = []
 
         def add(query: str) -> None:
@@ -251,6 +298,9 @@ class RagService:
         add(simplified)
         return candidates[:8]
 
+    def _rescue_queries(self, question: str, initial_hits: List[Dict[str, object]]) -> List[str]:
+        return self._rule_rescue_queries(question)
+
     @staticmethod
     def _best_score(hits: List[Dict[str, object]]) -> float:
         return max((float(hit.get("score", 0.0)) for hit in hits), default=0.0)
@@ -263,6 +313,10 @@ class RagService:
         initial_best_score: float,
         final_best_score: float,
         evidence_count: int,
+        rescue_query_source: str = "",
+        query_rewrite_used_llm: bool = False,
+        query_rewrite_error: str = "",
+        retrieval_modes: Optional[List[str]] = None,
     ) -> Dict[str, object]:
         if rescued:
             status = "rescued"
@@ -281,7 +335,25 @@ class RagService:
             "final_best_score": round(final_best_score, 4),
             "min_evidence_score": self.min_evidence_score,
             "evidence_count": evidence_count,
+            "rescue_query_source": rescue_query_source,
+            "query_rewrite_used_llm": query_rewrite_used_llm,
+            "query_rewrite_error": query_rewrite_error,
+            "retrieval_modes": retrieval_modes or [],
         }
+
+    @staticmethod
+    def _retrieval_modes(hits: List[Dict[str, object]]) -> List[str]:
+        modes = []
+        for hit in hits:
+            mode = str(hit.get("retrieval_mode", "") or "")
+            backend = str(hit.get("keyword_backend", "") or "")
+            if mode == "keyword" and backend == "fts5":
+                mode = "bm25"
+            if mode == "hybrid" and backend == "fts5":
+                mode = "hybrid+bm25"
+            if mode and mode not in modes:
+                modes.append(mode)
+        return modes
 
     def _evidence_hits(self, question: str, hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
         return [

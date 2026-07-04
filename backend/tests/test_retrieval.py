@@ -72,3 +72,19 @@ def test_keyword_recall_hits_can_find_exact_terms():
     assert hits[0]["id"] == "doc-2:0"
     assert hits[0]["retrieval_mode"] == "keyword"
     assert hits[0]["keyword_recall_score"] > 0
+
+
+def test_rerank_adds_small_bm25_bonus():
+    hits = [
+        {
+            "content": "十七周年庆小程序需求",
+            "metadata": {"title": "需求.docx", "source_path": "需求.docx", "chunk_index": 0},
+            "score": 0.4,
+            "keyword_recall_score": 0.5,
+            "bm25_score": -1.2,
+        }
+    ]
+
+    results = rerank_hits("十七周年庆小程序有哪些需求？", hits, limit=1)
+
+    assert results[0]["bm25_bonus"] == 0.04

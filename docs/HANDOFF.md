@@ -112,7 +112,21 @@ cd backend
 python scripts\eval_retrieval.py
 ```
 
-期望看到 `Summary: 5/5 passed`。
+期望看到 `Summary: 10/10 passed`。
+
+如需保存本次评测报告，使用：
+
+```powershell
+python scripts\eval_report.py --save reports\latest.json
+```
+
+如需和某次基线对比，使用：
+
+```powershell
+python scripts\eval_report.py --compare reports\baseline.json --save reports\current.json
+```
+
+`backend\reports` 下的真实 JSON 报告默认不会提交到 GitHub。
 
 ## 7. RAG 优化路线
 
@@ -122,16 +136,19 @@ python scripts\eval_retrieval.py
 docs/RAG_OPTIMIZATION_PLAN.md
 ```
 
-当前第一轮已经开始落地低依赖优化：
+当前已经落地的主要优化：
 
 - Chunk Header：给每个切片增加块级标题。
 - Document Augmentation：给切片生成潜在问题，用于提升匹配率。
 - Query Transformation：把用户问题扩展成多个检索问题。
-- Hybrid Search v0：向量召回和关键词召回并行，合并候选后再重排。
-- Rerank v0：用向量分和关键词重合度做轻量重排。
+- Parent-Child Chunk v1：小块检索，大块上下文回答。
+- SQLite FTS/BM25 v1：补强项目名、字段、编号等硬关键词召回。
+- Hybrid Search v1：向量召回和 BM25/关键词召回并行，合并候选后再重排。
+- Rerank v1：用向量分、关键词重合度、BM25 小加分和反馈分做轻量重排。
 - Sentence Window / Context Compression v0：回答时补前后文，并控制上下文长度。
 - Feedback Loop v0：引用和检索片段支持“有帮助 / 没帮助”，反馈会存入 SQLite 并小幅影响后续排序。
-- Self-RAG v1：问答前检查证据分，低于 `MIN_EVIDENCE_SCORE` 时不调用 AI，直接返回“文档中没有找到依据”。
+- Self-RAG v3：问答前检查证据分，低分时使用 LLM/规则 query rewrite 补救，仍不足才返回“文档中没有找到依据”。
+- Eval Report v2：支持保存报告和对比基线。
 
 因为索引策略会影响向量内容，换电脑或拉取新代码后建议重新点击一次“索引文档”。
 

@@ -741,3 +741,108 @@ LLM Query Rewrite + Self-RAG 阈值大改
 - Citation Check 下一步建议：
   - 把 `citation_check.status`、`support_score` 写进 `rag_traces`。
   - 前端先显示“引用支撑风险”，不要马上阻断用户。
+
+### 11.2 2026-07-04 并行批次：BM25 / LLM Query Rewrite / Eval Compare
+
+本批次目标：
+
+```text
+A 线：SQLite FTS/BM25，把关键词召回从内存扫描升级成数据库全文检索。
+B 线：LLM Query Rewrite，让 Self-RAG 低分补救不只靠规则改写。
+C 线：Eval Report 对比指标，让优化可以和历史基线比较。
+主控：统一接入 Self-RAG、trace 和前端诊断。
+```
+
+并行分工：
+
+| 子任务 | 负责范围 | 允许修改 | 禁止修改 | 预期交付 |
+| --- | --- | --- | --- | --- |
+| SQLite FTS/BM25 | 检索底座 | `vector_store.py`, vector store 测试 | `rag.py`, `retrieval.py`, 前端、文档 | `keyword_search` 能返回 BM25/关键词 hit |
+| LLM Query Rewrite | 问题改写模块 | `query_rewrite.py`, query rewrite 测试 | RAG 主链路、前端、文档 | 有 key 调 LLM，无 key/失败回退规则 |
+| Eval Compare | 评测报告 | `eval_report.py`, eval report 测试 | RAG 主链路、前端、文档 | `--save`、`--compare`、delta 指标 |
+| 主控集成 | Self-RAG 与诊断 | `rag.py`, `db.py`, `retrieval.py`, 前端、文档 | 不重写子任务模块 | BM25 接入 hybrid，LLM 改写接入补救，trace/前端可观察 |
+
+为什么这样分：
+
+- BM25 是底层召回能力，先独立做，避免和 Self-RAG 逻辑耦合。
+- Query Rewrite 是“生成更多检索问法”，不是回答问题，适合独立测试。
+- Eval Compare 是旁路质量工具，不影响业务主链路。
+- 主控只负责把三块拼成一个闭环，并统一补文档和验证。
+
+实现结果：
+
+- SQLite FTS/BM25：
+  - 新增 `document_chunks_keyword`，始终保存关键词检索文本。
+  - 新增 `document_chunks_fts`，本机支持 FTS5 时使用 SQLite `bm25()`。
+  - 新增 `VectorStore.keyword_search(query, limit)`。
+  - `replace_document_chunks` 同步清理旧 chunk、关键词表和 FTS 表，避免重复索引。
+  - 旧环境不支持 FTS5 时回退普通关键词扫描。
+- LLM Query Rewrite：
+  - 新增 `rewrite_queries`。
+  - 输出清洗支持 JSON 数组、代码块、编号列表。
+  - 没有 API key 或 LLM 调用失败时回退规则 query。
+  - 限制最多 5 到 8 条 query，单条不超过 80 字。
+- Self-RAG 集成：
+  - 初次检索仍使用规则 query variant，避免每次检索都调用 LLM。
+  - 只有证据不足时才触发 LLM/规则 query rewrite 进行二次补救。
+  - `self_rag` 返回 `query_rewrite_used_llm`、`query_rewrite_error`、`rescue_query_source`、`retrieval_modes`。
+- Hybrid/Rerank 集成：
+  - 向量召回和 BM25/关键词召回合并后统一 rerank。
+  - BM25 命中会得到 `0.04` 小加分。
+  - 前端检索结果显示 BM25、BM25 加分和命中关键词。
+- Eval Compare：
+  - `eval_report.py --save reports/latest.json` 保存报告。
+  - `eval_report.py --compare reports/baseline.json` 输出对比 delta。
+  - 报告新增最近 trace 的 LLM 改写率和召回方式分布。
+  - `backend/reports/.gitignore` 忽略本地真实评测 JSON。
+- 前端诊断：
+  - Self-RAG 面板展示召回方式、改写来源和改写错误。
+  - RAG 诊断记录展示召回方式、是否 LLM 改写、补救状态和引用数量。
+
+大白话理解：
+
+- BM25 负责“查字典”：项目名、编号、字段名、域名这种硬词，它更稳。
+- 向量负责“找意思”：用户说法和文档说法不一样时，它更有用。
+- LLM Query Rewrite 负责“换问法”：第一次找不到时，先让模型把问题改写成更像检索语。
+- Eval Compare 负责“看趋势”：别凭感觉判断优化好坏。
+
+好处：
+
+- 对“周年庆是哪个游戏的”这类字段/项目名问题更稳。
+- 低分补救从纯规则升级为可用 LLM 改写，但仍有无 key 回退。
+- 前端和 trace 能看到 BM25、LLM 改写和补救状态，问题更容易定位。
+- 评测报告可以保存和对比，后续调参数不会只靠印象。
+
+缺点和边界：
+
+- BM25 只是关键词匹配，不懂语义。
+- 中文 FTS 仍以 ngram 辅助为主，不是真正工业中文分词。
+- LLM 改写只在低分补救时触发，会增加无依据问题的耗时。
+- BM25 加分目前是固定 `0.04`，后续要靠评测调参。
+
+验证结果：
+
+- 后端全量测试：`59 passed`。
+- 前端构建：`npm run build` 通过。
+- 重新索引：4 个文档全部刷新。
+- SQLite 关键词索引检查：
+  - `document_chunks = 36`
+  - `document_chunks_keyword = 36`
+  - `document_chunks_fts = 36`
+- 固定评测：`eval_retrieval.py` 结果 `10/10 passed`。
+- 新评测报告：
+  - `search_pass_rate: 100.0% (6/6)`
+  - `chat_pass_rate: 100.0% (4/4)`
+  - `refusal_rate: 25.0% (1/4)`
+  - `rescue_rate: 0.0% (0/1)`
+  - `avg_latency_ms: 4910`
+  - `api_failure_count: 0`
+  - 最近 20 条 trace：`hybrid+bm25=7`
+  - 最近 20 条 trace：`recent_trace_llm_rewrite_rate=5.0%`
+
+下一步建议：
+
+- 第三批主线优先做 `Citation Check 接入 Trace`，先记录风险，不拦截答案。
+- BM25 下一步做字段权重：标题、字段事实、正文不要同权。
+- Query Rewrite 下一步让 LLM 输出结构化类型：明确化、关键词化、子问题化。
+- Eval Report 下一步保存多次报告并生成趋势表。

@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS rag_traces (
     min_evidence_score REAL NOT NULL,
     evidence_count INTEGER NOT NULL,
     rescue_queries TEXT NOT NULL,
+    rescue_query_source TEXT NOT NULL DEFAULT '',
+    query_rewrite_used_llm INTEGER NOT NULL DEFAULT 0,
+    query_rewrite_error TEXT NOT NULL DEFAULT '',
+    retrieval_modes TEXT NOT NULL DEFAULT '[]',
     latency_ms INTEGER NOT NULL,
     created_at TEXT NOT NULL
 );
@@ -80,6 +84,22 @@ class DocumentRepository:
     def init_schema(self) -> None:
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            self._ensure_rag_trace_columns(connection)
+
+    def _ensure_rag_trace_columns(self, connection: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(rag_traces)").fetchall()
+        }
+        migrations = {
+            "rescue_query_source": "ALTER TABLE rag_traces ADD COLUMN rescue_query_source TEXT NOT NULL DEFAULT ''",
+            "query_rewrite_used_llm": "ALTER TABLE rag_traces ADD COLUMN query_rewrite_used_llm INTEGER NOT NULL DEFAULT 0",
+            "query_rewrite_error": "ALTER TABLE rag_traces ADD COLUMN query_rewrite_error TEXT NOT NULL DEFAULT ''",
+            "retrieval_modes": "ALTER TABLE rag_traces ADD COLUMN retrieval_modes TEXT NOT NULL DEFAULT '[]'",
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                connection.execute(statement)
 
     def upsert_document(self, document: Dict[str, object]) -> None:
         with self.connect() as connection:
@@ -231,6 +251,10 @@ class DocumentRepository:
             "min_evidence_score": float(self_rag.get("min_evidence_score", 0.0)),
             "evidence_count": int(self_rag.get("evidence_count", 0)),
             "rescue_queries": json.dumps(self_rag.get("rescue_queries", []), ensure_ascii=False),
+            "rescue_query_source": str(self_rag.get("rescue_query_source", "")),
+            "query_rewrite_used_llm": int(bool(self_rag.get("query_rewrite_used_llm", False))),
+            "query_rewrite_error": str(self_rag.get("query_rewrite_error", "")),
+            "retrieval_modes": json.dumps(self_rag.get("retrieval_modes", []), ensure_ascii=False),
             "latency_ms": latency_ms,
             "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
         }
@@ -241,13 +265,17 @@ class DocumentRepository:
                     id, question, answer_preview, is_refusal, citation_count,
                     cited_titles, self_rag_status, rescue_attempted, rescued,
                     initial_best_score, final_best_score, min_evidence_score,
-                    evidence_count, rescue_queries, latency_ms, created_at
+                    evidence_count, rescue_queries, rescue_query_source,
+                    query_rewrite_used_llm, query_rewrite_error, retrieval_modes,
+                    latency_ms, created_at
                 )
                 VALUES (
                     :id, :question, :answer_preview, :is_refusal, :citation_count,
                     :cited_titles, :self_rag_status, :rescue_attempted, :rescued,
                     :initial_best_score, :final_best_score, :min_evidence_score,
-                    :evidence_count, :rescue_queries, :latency_ms, :created_at
+                    :evidence_count, :rescue_queries, :rescue_query_source,
+                    :query_rewrite_used_llm, :query_rewrite_error, :retrieval_modes,
+                    :latency_ms, :created_at
                 )
                 """,
                 trace,
@@ -262,7 +290,9 @@ class DocumentRepository:
                     id, question, answer_preview, is_refusal, citation_count,
                     cited_titles, self_rag_status, rescue_attempted, rescued,
                     initial_best_score, final_best_score, min_evidence_score,
-                    evidence_count, rescue_queries, latency_ms, created_at
+                    evidence_count, rescue_queries, rescue_query_source,
+                    query_rewrite_used_llm, query_rewrite_error, retrieval_modes,
+                    latency_ms, created_at
                 FROM rag_traces
                 ORDER BY created_at DESC
                 LIMIT ?
@@ -277,6 +307,8 @@ class DocumentRepository:
         decoded["is_refusal"] = bool(decoded.get("is_refusal"))
         decoded["rescue_attempted"] = bool(decoded.get("rescue_attempted"))
         decoded["rescued"] = bool(decoded.get("rescued"))
+        decoded["query_rewrite_used_llm"] = bool(decoded.get("query_rewrite_used_llm"))
         decoded["cited_titles"] = json.loads(str(decoded.get("cited_titles") or "[]"))
         decoded["rescue_queries"] = json.loads(str(decoded.get("rescue_queries") or "[]"))
+        decoded["retrieval_modes"] = json.loads(str(decoded.get("retrieval_modes") or "[]"))
         return decoded

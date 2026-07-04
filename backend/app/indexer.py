@@ -11,7 +11,7 @@ from .parsers import SUPPORTED_EXTENSIONS, parse_document
 from .vector_store import VectorStore
 
 
-INDEX_SCHEMA_VERSION = "small-to-big-parent-child-v1"
+INDEX_SCHEMA_VERSION = "bm25-query-rewrite-v1"
 
 
 def file_hash(path: Path) -> str:
