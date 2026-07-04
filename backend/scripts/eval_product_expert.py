@@ -98,6 +98,30 @@ def evaluate_similar(requirement: Dict[str, Any], response: Optional[Dict[str, A
     }
 
 
+def evaluate_timeline(requirement: Dict[str, Any], response: Optional[Dict[str, Any]], latency_ms: int, error: str = ""):
+    response = response if isinstance(response, dict) else {}
+    versions = response.get("versions", []) if isinstance(response.get("versions", []), list) else []
+    change_events = response.get("change_events", []) if isinstance(response.get("change_events", []), list) else []
+    recommendations = response.get("recommendations", []) if isinstance(response.get("recommendations", []), list) else []
+    high_risk_count = sum(
+        1
+        for event in change_events
+        if isinstance(event, dict) and event.get("risk_level") == "high"
+    )
+    return {
+        "ok": not error,
+        "error": error,
+        "latency_ms": latency_ms,
+        "requirement_key": requirement.get("requirement_key", ""),
+        "requirement_title": requirement.get("requirement_title", ""),
+        "version_count": len(versions),
+        "change_event_count": len(change_events),
+        "high_risk_count": high_risk_count,
+        "recommendation_count": len(recommendations),
+        "trend_summary": str(response.get("trend_summary", "")),
+    }
+
+
 def average(values: List[float]) -> float:
     if not values:
         return 0.0
@@ -108,10 +132,13 @@ def summarize(
     requirement_record: Dict[str, Any],
     card_records: List[Dict[str, Any]],
     similar_records: Optional[List[Dict[str, Any]]] = None,
+    timeline_records: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     similar_records = similar_records or []
+    timeline_records = timeline_records or []
     successful_cards = [record for record in card_records if record.get("ok")]
     successful_similar = [record for record in similar_records if record.get("ok")]
+    successful_timelines = [record for record in timeline_records if record.get("ok")]
     status_counts = Counter(str(record.get("quality_status", "unknown") or "unknown") for record in successful_cards)
     missing_counts: Counter = Counter()
     weak_counts: Counter = Counter()
@@ -136,9 +163,18 @@ def summarize(
         "similar_failure_count": len(similar_records) - len(successful_similar),
         "avg_similar_count": average([float(record["similar_count"]) for record in successful_similar]),
         "avg_top_similar_score": average([float(record["top_score"]) for record in successful_similar]),
+        "timeline_success_count": len(successful_timelines),
+        "timeline_failure_count": len(timeline_records) - len(successful_timelines),
+        "avg_timeline_versions": average([float(record["version_count"]) for record in successful_timelines]),
+        "avg_change_events": average([float(record["change_event_count"]) for record in successful_timelines]),
+        "timeline_high_risk_count": sum(int(record["high_risk_count"]) for record in successful_timelines),
+        "avg_timeline_recommendations": average(
+            [float(record["recommendation_count"]) for record in successful_timelines]
+        ),
         "api_failure_count": (0 if requirement_record.get("ok") else 1)
         + sum(1 for record in card_records if not record.get("ok"))
-        + sum(1 for record in similar_records if not record.get("ok")),
+        + sum(1 for record in similar_records if not record.get("ok"))
+        + sum(1 for record in timeline_records if not record.get("ok")),
     }
 
 
@@ -164,11 +200,19 @@ def build_report(base_url: str, limit: int) -> Dict[str, Any]:
             "/api/product/requirements/%s/similar?limit=3" % key,
         )
         similar_records.append(evaluate_similar(requirement, response, similar_latency_ms, similar_error))
+    timeline_records = []
+    for requirement in requirements:
+        key = urllib.parse.quote(str(requirement.get("requirement_key", "")), safe="")
+        response, timeline_latency_ms, timeline_error = request_json(
+            base_url,
+            "/api/product/requirements/%s/timeline" % key,
+        )
+        timeline_records.append(evaluate_timeline(requirement, response, timeline_latency_ms, timeline_error))
 
     return {
         "base_url": base_url,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "summary": summarize(requirement_record, card_records, similar_records),
+        "summary": summarize(requirement_record, card_records, similar_records, timeline_records),
         "requirements": {
             key: value
             for key, value in requirement_record.items()
@@ -176,6 +220,7 @@ def build_report(base_url: str, limit: int) -> Dict[str, Any]:
         },
         "cards": card_records,
         "similar": similar_records,
+        "timelines": timeline_records,
     }
 
 
@@ -215,6 +260,11 @@ def format_text_report(report: Dict[str, Any]) -> str:
         "similar_success_count: %s" % summary["similar_success_count"],
         "avg_similar_count: %.2f" % summary["avg_similar_count"],
         "avg_top_similar_score: %.2f" % summary["avg_top_similar_score"],
+        "timeline_success_count: %s" % summary["timeline_success_count"],
+        "avg_timeline_versions: %.2f" % summary["avg_timeline_versions"],
+        "avg_change_events: %.2f" % summary["avg_change_events"],
+        "timeline_high_risk_count: %s" % summary["timeline_high_risk_count"],
+        "avg_timeline_recommendations: %.2f" % summary["avg_timeline_recommendations"],
         "api_failure_count: %s" % summary["api_failure_count"],
         "",
         "Cards:",
@@ -246,6 +296,24 @@ def format_text_report(report: Dict[str, Any]) -> str:
                 record.get("top_score", 0.0),
             )
         )
+        if record.get("error"):
+            lines.append("  error: %s" % record["error"])
+    lines.extend(["", "Requirement timelines:"])
+    for record in report.get("timelines", []):
+        status = "PASS" if record.get("ok") else "API_ERROR"
+        lines.append(
+            "[%s] %s | versions=%s | changes=%s | high_risk=%s | recommendations=%s"
+            % (
+                status,
+                record.get("requirement_title", ""),
+                record.get("version_count", 0),
+                record.get("change_event_count", 0),
+                record.get("high_risk_count", 0),
+                record.get("recommendation_count", 0),
+            )
+        )
+        if record.get("trend_summary"):
+            lines.append("  %s" % record["trend_summary"])
         if record.get("error"):
             lines.append("  error: %s" % record["error"])
     return "\n".join(lines)

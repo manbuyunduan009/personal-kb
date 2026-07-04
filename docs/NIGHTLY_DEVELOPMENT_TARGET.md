@@ -198,6 +198,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `group_documents_by_requirement(documents)`
 - `build_requirement_card(requirement_key, documents)`
 - `find_similar_requirements(requirement_key, documents, limit)`
+- `build_requirement_timeline(requirement_key, documents)`
 - `analyze_requirement_change(old_document, new_document)`
 
 新增 API：
@@ -205,6 +206,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `GET /api/product/requirements`
 - `GET /api/product/requirements/{requirement_key}/card`
 - `GET /api/product/requirements/{requirement_key}/similar`
+- `GET /api/product/requirements/{requirement_key}/timeline`
 - `POST /api/product/change-analysis`
 
 新增脚本：
@@ -219,6 +221,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - `RequirementVersion`
 - `RequirementCard`
 - `SimilarRequirementsResult`
+- `RequirementTimeline`
 - `ChangeAnalysis`
 
 新增 UI：
@@ -229,6 +232,7 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 需求卡片按钮和卡片详情
 - 卡片质量、完整度和缺失章节提示
 - 相似需求按钮和相似结果列表
+- 需求演进按钮和时间线结果列表
 - 变更分析按钮
 - 变更摘要展示
 
@@ -256,8 +260,9 @@ npm run build
 4. 查看需求分组是否合理。
 5. 点击“查看卡片”，确认能看到摘要、影响模块、待确认问题和下一步。
 6. 点击“找相似”，确认能看到相似需求、相似分、共同模块或相似原因。
-7. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
-8. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
+7. 点击“看演进”，确认能看到版本时间线、变更次数、风险等级和建议动作。
+8. 如果某个需求只有一个版本，确认页面提示“当前只有一个版本，先补历史资料后才能看演进”。
+9. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
 
 ### 产品专家评测
 
@@ -277,13 +282,14 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 
 ### 当前验证结果
 
-- 后端测试：`70 passed`。
+- 后端测试：`72 passed`。
 - 前端构建：`npm run build` 通过。
 - 新增后端模块：`backend/app/product_expert.py`。
 - 新增 API：
   - `GET /api/product/requirements`
   - `GET /api/product/requirements/{requirement_key}/card`
   - `GET /api/product/requirements/{requirement_key}/similar`
+  - `GET /api/product/requirements/{requirement_key}/timeline`
   - `POST /api/product/change-analysis`
 - 新增脚本：`backend/scripts/eval_product_expert.py`
 - 新增前端入口：右侧“产品专家”面板。
@@ -291,6 +297,35 @@ backend\.venv\Scripts\python.exe backend\scripts\eval_product_expert.py
 - 临时后端 API 验证：`GET /api/product/requirements/{requirement_key}/card` 成功返回需求卡片。
 - 临时后端专项评测：`eval_product_expert.py` 通过，`card_success_count: 4/4`，`api_failure_count: 0`。
 - 临时后端专项评测：相似需求通过，`similar_success_count: 4`，`avg_similar_count: 3.00`，`avg_top_similar_score: 0.42`。
+- 临时后端专项评测：需求演进时间线通过，`timeline_success_count: 4`，`avg_timeline_versions: 1.00`，`avg_change_events: 0.00`，`avg_timeline_recommendations: 2.00`。
+
+### P0-8 已完成：需求演进时间线 v1
+
+做法：
+
+1. 先按 `requirement_key` 找到同一需求的所有版本。
+2. 把版本按 `last_modified + indexed_at` 从旧到新排序。
+3. 对每个版本生成版本摘要：有效文本行数、结构字段数、影响模块。
+4. 对相邻版本做 diff：新增、删除、字段变化、影响模块、风险等级。
+5. 汇总反复变化的模块，给出建议动作。
+
+为什么现在做：
+
+- 你真正关心的是“这个需求历史上怎么变、现在该怎么做”。
+- 如果没有时间线，AI 只能看到零散文档，很难判断历史演进。
+- 先用规则版时间线打底，后续再接真实 embedding 和 LLM 方案推荐会更稳。
+
+优点：
+
+- 不依赖真实 embedding，今晚就能验收。
+- 能把“最新两版对比”扩展成“整个需求历史演进”。
+- 能发现反复变化的模块，帮助你判断高风险区域。
+
+限制：
+
+- v1 仍是文本 diff，不理解复杂 Word/Excel 版式。
+- 版本归并依赖文件名、标题和字段抽取，后续需要人工修正入口。
+- 当前只是产品判断入口，不替代最终人工确认。
 
 ## 7. 这一步的价值
 

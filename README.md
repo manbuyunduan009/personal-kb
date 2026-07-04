@@ -20,7 +20,7 @@ personal-kb
 │  │  ├─ indexer.py       # 扫描 docs 并入库
 │  │  ├─ vector_store.py  # 本地 SQLite 向量库 + FTS/BM25 关键词库
 │  │  ├─ query_rewrite.py # LLM 检索问题改写
-│  │  ├─ product_expert.py # 需求分组、版本管理、变更分析
+│  │  ├─ product_expert.py # 需求分组、版本管理、需求卡片、相似需求、演进时间线
 │  │  └─ rag.py           # 检索 + AI 问答
 │  └─ tests
 └─ frontend
@@ -153,7 +153,7 @@ python scripts\eval_report.py --compare reports\baseline.json --save reports\cur
 python scripts\eval_product_expert.py
 ```
 
-这个脚本会检查需求分组、需求卡片和相似需求是否能生成，并统计卡片完整度、缺失章节、待确认问题、下一步动作数量、相似需求数量和最高相似分。
+这个脚本会检查需求分组、需求卡片、相似需求和需求演进时间线是否能生成，并统计卡片完整度、缺失章节、待确认问题、下一步动作数量、相似需求数量、最高相似分、平均版本数和平均变更次数。
 
 ## 下一步练习
 

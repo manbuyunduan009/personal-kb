@@ -5,6 +5,7 @@ import {
   BookOpen,
   Database,
   FileText,
+  GitBranch,
   Loader2,
   MessageSquareText,
   Play,
@@ -25,12 +26,14 @@ import {
   getHealth,
   getProductRequirements,
   getRequirementCard,
+  getRequirementTimeline,
   getSimilarRequirements,
   getTraces,
   Health,
   IndexResult,
   RequirementCard,
   RagTrace,
+  RequirementTimeline,
   RequirementGroup,
   runIndex,
   search,
@@ -63,9 +66,12 @@ function App() {
   const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
   const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
   const [similarRequirements, setSimilarRequirements] = useState<SimilarRequirementsResult | null>(null);
+  const [requirementTimeline, setRequirementTimeline] = useState<RequirementTimeline | null>(null);
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "card" | "similar" | "boot" | "">("boot");
+  const [loading, setLoading] = useState<
+    "index" | "search" | "chat" | "product" | "card" | "similar" | "timeline" | "boot" | ""
+  >("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
@@ -231,6 +237,22 @@ function App() {
       const result = await getSimilarRequirements(group.requirement_key, 3);
       setSimilarRequirements(result);
       setProductMessage(`已查找相似需求：${group.requirement_title}`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleLoadRequirementTimeline(group: RequirementGroup) {
+    setProductMessage("");
+    setRequirementTimeline(null);
+    setLoading("timeline");
+    setError("");
+    try {
+      const result = await getRequirementTimeline(group.requirement_key);
+      setRequirementTimeline(result);
+      setProductMessage(`已生成需求演进时间线：${group.requirement_title}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -512,6 +534,10 @@ function App() {
                       {loading === "similar" ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
                       找相似
                     </button>
+                    <button onClick={() => handleLoadRequirementTimeline(group)} disabled={loading === "timeline"}>
+                      {loading === "timeline" ? <Loader2 className="spin" size={15} /> : <GitBranch size={15} />}
+                      看演进
+                    </button>
                     <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
                       {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
                       分析变化
@@ -592,6 +618,71 @@ function App() {
                     </article>
                   ))}
                 </div>
+              </article>
+            )}
+
+            {requirementTimeline && (
+              <article className="timeline-panel">
+                <h3>需求演进</h3>
+                <p>{requirementTimeline.trend_summary}</p>
+                <small>{requirementTimeline.strategy}</small>
+
+                {requirementTimeline.recurring_modules.length > 0 && (
+                  <div className="version-tags">
+                    {requirementTimeline.recurring_modules.slice(0, 5).map((module) => (
+                      <span key={module.label}>
+                        {module.label} × {module.count}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="timeline-list">
+                  {requirementTimeline.versions.map((version) => (
+                    <article className={version.is_latest ? "timeline-version latest" : "timeline-version"} key={version.document.id}>
+                      <header>
+                        <b>
+                          {version.sequence}. {version.version_label}
+                        </b>
+                        <span>{version.is_latest ? "最新" : `${version.line_count} 行`}</span>
+                      </header>
+                      <p>{version.summary}</p>
+                      <small>{shortPath(version.document.source_path)}</small>
+                    </article>
+                  ))}
+                </div>
+
+                {requirementTimeline.change_events.length === 0 ? (
+                  <p className="empty">当前只有一个版本，先补历史资料后才能看演进。</p>
+                ) : (
+                  <div className="timeline-list">
+                    {requirementTimeline.change_events.map((event) => (
+                      <article className={`timeline-change ${event.risk_level}`} key={`${event.from_version}-${event.to_version}`}>
+                        <header>
+                          <b>
+                            {event.from_version} → {event.to_version}
+                          </b>
+                          <span>{riskLabel(event.risk_level)}</span>
+                        </header>
+                        <p>{event.summary}</p>
+                        <small>
+                          新增 {event.added_count} · 删除 {event.removed_count} · 字段变化 {event.field_change_count}
+                        </small>
+                        {event.impact_modules.length > 0 && (
+                          <div className="version-tags">
+                            {event.impact_modules.map((module) => (
+                              <span key={`${event.sequence}-${module.label}`}>{module.label}</span>
+                            ))}
+                          </div>
+                        )}
+                        <ChangeList title="风险原因" items={event.risk_reasons} />
+                        <ChangeList title="待确认" items={event.open_questions} />
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                <ChangeList title="建议动作" items={requirementTimeline.recommendations} />
               </article>
             )}
 
@@ -698,6 +789,14 @@ function cardQualityLabel(status: string) {
   if (status === "fair") return "需要复核";
   if (status === "needs_review") return "信息不足";
   return "未评估";
+}
+
+function riskLabel(level: string) {
+  if (level === "high") return "高风险";
+  if (level === "medium") return "中风险";
+  if (level === "low") return "低风险";
+  if (level === "stable") return "稳定";
+  return "待判断";
 }
 
 function FeedbackActions({

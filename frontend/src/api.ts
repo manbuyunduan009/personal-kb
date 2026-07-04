@@ -200,6 +200,58 @@ export type SimilarRequirementsResult = {
   limitations: string[];
 };
 
+export type TimelineVersion = {
+  sequence: number;
+  version_label: string;
+  is_latest: boolean;
+  document: { id: string; title: string; source_path: string; file_type: string };
+  summary: string;
+  field_facts: Array<{ label: string; value: string; scope: string }>;
+  impact_modules: Array<{ label: string; matched_keywords: string[] }>;
+  line_count: number;
+};
+
+export type TimelineChangeEvent = {
+  sequence: number;
+  from_version: string;
+  to_version: string;
+  from_document: { id: string; title: string; source_path: string; file_type: string };
+  to_document: { id: string; title: string; source_path: string; file_type: string };
+  summary: string;
+  added_count: number;
+  removed_count: number;
+  field_change_count: number;
+  added_preview: string[];
+  removed_preview: string[];
+  field_changes: Array<{
+    label: string;
+    old_value: string;
+    new_value: string;
+    change_type: "added" | "removed" | "modified" | string;
+  }>;
+  impact_modules: Array<{ label: string; matched_keywords: string[] }>;
+  risk_level: "stable" | "low" | "medium" | "high" | string;
+  risk_reasons: string[];
+  open_questions: string[];
+};
+
+export type RequirementTimeline = {
+  requirement: {
+    requirement_key: string;
+    requirement_title: string;
+    project_name: string;
+    document_count: number;
+    latest_version_label: string;
+  };
+  trend_summary: string;
+  versions: TimelineVersion[];
+  change_events: TimelineChangeEvent[];
+  recurring_modules: Array<{ label: string; count: number }>;
+  recommendations: string[];
+  strategy: string;
+  limitations: string[];
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -247,6 +299,10 @@ export function getSimilarRequirements(requirementKey: string, limit = 3) {
   return request<SimilarRequirementsResult>(
     `/api/product/requirements/${encodeURIComponent(requirementKey)}/similar?limit=${limit}`
   );
+}
+
+export function getRequirementTimeline(requirementKey: string) {
+  return request<RequirementTimeline>(`/api/product/requirements/${encodeURIComponent(requirementKey)}/timeline`);
 }
 
 export function analyzeChange(oldDocumentId: string, newDocumentId: string) {

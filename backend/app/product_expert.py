@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -281,6 +282,266 @@ def find_similar_requirements(
             "切到真实 embedding 后，可以把卡片相似度升级为语义相似度。",
         ],
     }
+
+
+def build_requirement_timeline(requirement_key: str, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    groups = group_documents_by_requirement(documents)
+    group = next((item for item in groups if item["requirement_key"] == requirement_key), None)
+    if group is None:
+        raise KeyError(requirement_key)
+
+    documents_by_id = {str(document.get("id", "")): document for document in documents}
+    versions = sorted(
+        list(group.get("versions", [])),
+        key=lambda item: (float(item.get("last_modified") or 0), str(item.get("indexed_at") or "")),
+    )
+
+    version_events = []
+    for index, version in enumerate(versions, start=1):
+        document = resolve_version_document(version, documents_by_id)
+        version_events.append(build_timeline_version_event(version, document, index, len(versions)))
+
+    change_events = []
+    for index in range(1, len(versions)):
+        old_version = versions[index - 1]
+        new_version = versions[index]
+        old_document = resolve_version_document(old_version, documents_by_id)
+        new_document = resolve_version_document(new_version, documents_by_id)
+        change_events.append(
+            build_timeline_change_event(old_version, new_version, old_document, new_document, index)
+        )
+
+    recurring_modules = recurring_module_counts(change_events)
+    return {
+        "requirement": {
+            "requirement_key": group["requirement_key"],
+            "requirement_title": group["requirement_title"],
+            "project_name": group["project_name"],
+            "document_count": group["document_count"],
+            "latest_version_label": (group.get("latest_document") or {}).get("version_label", ""),
+        },
+        "trend_summary": build_timeline_trend_summary(group, version_events, change_events, recurring_modules),
+        "versions": version_events,
+        "change_events": change_events,
+        "recurring_modules": recurring_modules,
+        "recommendations": build_timeline_recommendations(change_events, recurring_modules),
+        "strategy": "按需求分组把版本从旧到新排序，再对相邻版本做 diff；适合先看需求演进，不依赖 embedding 或 AI。",
+        "limitations": [
+            "v1 使用规则和文本 diff，适合发现显性变化，不等于最终产品结论。",
+            "如果历史版本命名不一致，可能需要先优化需求归并规则。",
+            "Word/Excel 会转成纯文本后比较，复杂表格结构还需要后续增强。",
+        ],
+    }
+
+
+def resolve_version_document(
+    version: Dict[str, object],
+    documents_by_id: Dict[str, Dict[str, object]],
+) -> Dict[str, object]:
+    document_id = str(version.get("document_id", ""))
+    if document_id in documents_by_id:
+        return documents_by_id[document_id]
+    return {
+        "id": document_id,
+        "title": version.get("title", ""),
+        "source_path": version.get("source_path", ""),
+        "file_type": version.get("file_type", ""),
+        "last_modified": version.get("last_modified", 0),
+        "indexed_at": version.get("indexed_at", ""),
+        "content_preview": "",
+    }
+
+
+def build_timeline_version_event(
+    version: Dict[str, object],
+    document: Dict[str, object],
+    sequence: int,
+    total: int,
+) -> Dict[str, object]:
+    text = load_document_text(document)
+    lines = normalize_lines(text)
+    field_facts = extract_field_facts(text, scope="document")
+    impact_modules = infer_impact_modules(lines)
+    return {
+        "sequence": sequence,
+        "version_label": version.get("version_label", ""),
+        "is_latest": bool(version.get("is_latest")),
+        "document": document_ref(document),
+        "summary": build_timeline_version_summary(sequence, total, lines, field_facts, impact_modules),
+        "field_facts": field_facts[:8],
+        "impact_modules": impact_modules,
+        "line_count": len(lines),
+    }
+
+
+def build_timeline_version_summary(
+    sequence: int,
+    total: int,
+    lines: List[str],
+    field_facts: List[Dict[str, str]],
+    impact_modules: List[Dict[str, object]],
+) -> str:
+    modules = "、".join(str(module.get("label", "")) for module in impact_modules[:4]) or "未识别"
+    fact_count = len(field_facts)
+    if not lines:
+        return "第 %s/%s 版：文档内容为空或无法解析。" % (sequence, total)
+    return "第 %s/%s 版：识别到 %s 条有效文本、%s 个结构字段；可能涉及 %s。" % (
+        sequence,
+        total,
+        len(lines),
+        fact_count,
+        modules,
+    )
+
+
+def build_timeline_change_event(
+    old_version: Dict[str, object],
+    new_version: Dict[str, object],
+    old_document: Dict[str, object],
+    new_document: Dict[str, object],
+    sequence: int,
+) -> Dict[str, object]:
+    old_text = load_document_text(old_document)
+    new_text = load_document_text(new_document)
+    old_lines = normalize_lines(old_text)
+    new_lines = normalize_lines(new_text)
+    added_lines, removed_lines = line_set_diff(old_lines, new_lines)
+    field_changes = compare_field_facts(old_text, new_text)
+    impact_modules = infer_impact_modules(added_lines + removed_lines + field_change_texts(field_changes))
+    risk = assess_change_risk(len(added_lines), len(removed_lines), field_changes, impact_modules)
+    return {
+        "sequence": sequence,
+        "from_version": old_version.get("version_label", ""),
+        "to_version": new_version.get("version_label", ""),
+        "from_document": document_ref(old_document),
+        "to_document": document_ref(new_document),
+        "summary": build_change_summary(added_lines, removed_lines, field_changes, impact_modules),
+        "added_count": len(added_lines),
+        "removed_count": len(removed_lines),
+        "field_change_count": len(field_changes),
+        "added_preview": trim_lines(added_lines, limit=5, max_chars=160),
+        "removed_preview": trim_lines(removed_lines, limit=5, max_chars=160),
+        "field_changes": field_changes[:8],
+        "impact_modules": impact_modules,
+        "risk_level": risk["level"],
+        "risk_reasons": risk["reasons"],
+        "open_questions": build_open_questions(field_changes, impact_modules, added_lines, removed_lines)[:6],
+    }
+
+
+def assess_change_risk(
+    added_count: int,
+    removed_count: int,
+    field_changes: List[Dict[str, str]],
+    impact_modules: List[Dict[str, object]],
+) -> Dict[str, object]:
+    points = 0
+    reasons = []
+    changed_line_count = added_count + removed_count
+    if changed_line_count >= 20:
+        points += 2
+        reasons.append("文本变化较多")
+    elif changed_line_count >= 5:
+        points += 1
+        reasons.append("存在多处文本变化")
+
+    if len(field_changes) >= 3:
+        points += 2
+        reasons.append("结构字段变化较多")
+    elif field_changes:
+        points += 1
+        reasons.append("存在结构字段变化")
+
+    labels = {str(module.get("label", "")) for module in impact_modules}
+    critical_labels = {"权限/登录", "接口/后端", "业务规则"}
+    if labels & critical_labels:
+        points += 1
+        reasons.append("涉及登录、接口或核心业务规则")
+    if "排期" in labels:
+        points += 1
+        reasons.append("涉及排期变化")
+
+    if points >= 4:
+        level = "high"
+    elif points >= 2:
+        level = "medium"
+    elif changed_line_count or field_changes:
+        level = "low"
+    else:
+        level = "stable"
+
+    return {"level": level, "reasons": reasons or ["未发现明显高风险变化"]}
+
+
+def recurring_module_counts(change_events: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    counter: Counter = Counter()
+    for event in change_events:
+        modules = event.get("impact_modules", [])
+        if isinstance(modules, list):
+            counter.update(str(module.get("label", "")) for module in modules if isinstance(module, dict))
+    return [
+        {"label": label, "count": count}
+        for label, count in counter.most_common()
+        if label
+    ]
+
+
+def build_timeline_trend_summary(
+    group: Dict[str, object],
+    version_events: List[Dict[str, object]],
+    change_events: List[Dict[str, object]],
+    recurring_modules: List[Dict[str, object]],
+) -> str:
+    if not change_events:
+        return "%s 当前只识别到 %s 个版本，适合先做需求卡片，暂时不能判断演进趋势。" % (
+            group.get("requirement_title", ""),
+            len(version_events),
+        )
+    high_count = sum(1 for event in change_events if event.get("risk_level") == "high")
+    medium_count = sum(1 for event in change_events if event.get("risk_level") == "medium")
+    module_text = "、".join(str(item.get("label", "")) for item in recurring_modules[:3]) or "未识别"
+    return "%s 识别到 %s 个版本、%s 次版本间变更；高风险 %s 次、中风险 %s 次；反复影响模块：%s。" % (
+        group.get("requirement_title", ""),
+        len(version_events),
+        len(change_events),
+        high_count,
+        medium_count,
+        module_text,
+    )
+
+
+def build_timeline_recommendations(
+    change_events: List[Dict[str, object]],
+    recurring_modules: List[Dict[str, object]],
+) -> List[str]:
+    if not change_events:
+        return [
+            "先补齐同一需求的历史版本，再判断变化趋势。",
+            "当前可以先用需求卡片检查背景、目标、范围、规则和验收点是否完整。",
+        ]
+
+    recommendations = ["先复核最新一次变更，因为它最可能影响当前开发和验收。"]
+    high_events = [event for event in change_events if event.get("risk_level") == "high"]
+    if high_events:
+        recommendations.append("存在高风险变更，建议把对应版本差异转成专项验收清单。")
+
+    recurring_labels = [str(item.get("label", "")) for item in recurring_modules if int(item.get("count", 0) or 0) >= 2]
+    if recurring_labels:
+        recommendations.append("反复变化的模块是：%s，建议沉淀成固定检查项。" % "、".join(recurring_labels[:4]))
+
+    all_labels = {
+        str(module.get("label", ""))
+        for event in change_events
+        for module in event.get("impact_modules", [])
+        if isinstance(module, dict)
+    }
+    if "接口/后端" in all_labels:
+        recommendations.append("涉及接口或配置变更时，优先确认字段默认值、异常返回和前后端兜底。")
+    if "权限/登录" in all_labels:
+        recommendations.append("涉及登录授权时，补充未登录、授权失败、切环境和免登失效用例。")
+    if "排期" in all_labels:
+        recommendations.append("涉及排期变化时，同步研发、测试、运营和上线窗口。")
+    return _unique_strings(recommendations)
 
 
 def score_card_similarity(

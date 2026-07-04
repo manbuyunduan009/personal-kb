@@ -3,6 +3,7 @@ from pathlib import Path
 from app.product_expert import (
     analyze_requirement_change,
     build_requirement_card,
+    build_requirement_timeline,
     find_similar_requirements,
     group_documents_by_requirement,
     infer_requirement_identity,
@@ -225,3 +226,85 @@ def test_find_similar_requirements_returns_ranked_candidates(tmp_path: Path):
     assert result["similar"][0]["score"] > result["similar"][1]["score"]
     assert result["similar"][0]["shared_modules"]
     assert result["similar"][0]["reasons"]
+
+
+def test_build_requirement_timeline_reports_version_changes(tmp_path: Path):
+    old_path = tmp_path / "old.md"
+    middle_path = tmp_path / "middle.md"
+    new_path = tmp_path / "new.md"
+    old_path.write_text(
+        "\n".join(
+            [
+                "《剑网3》周年庆预约小程序",
+                "| 项目/部门所属 | K1-剑网 3 |",
+                "| 期望完成日期 | 2026/07/01 |",
+                "功能范围：预约活动入口。",
+                "验收：检查入口展示。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    middle_path.write_text(
+        "\n".join(
+            [
+                "《剑网3》周年庆预约小程序",
+                "| 项目/部门所属 | K1-剑网 3 |",
+                "| 期望完成日期 | 2026/07/10 |",
+                "功能范围：预约活动入口和微信授权登录。",
+                "验收：检查入口展示和授权失败。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    new_path.write_text(
+        "\n".join(
+            [
+                "《剑网3》周年庆预约小程序",
+                "| 项目/部门所属 | K1-剑网 3 |",
+                "| 期望完成日期 | 2026/07/20 |",
+                "功能范围：预约活动入口、微信授权登录和票务资格规则。",
+                "验收：检查入口展示、授权失败和重复预约。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    documents = [
+        {
+            "id": "old",
+            "title": "【需求管理】《剑网3》周年庆预约小程序@20260427.md",
+            "source_path": str(old_path),
+            "file_type": ".md",
+            "content_preview": old_path.read_text(encoding="utf-8"),
+            "last_modified": 100,
+            "indexed_at": "2026-04-27T00:00:00Z",
+        },
+        {
+            "id": "middle",
+            "title": "【需求管理】《剑网3》周年庆预约小程序@20260701.md",
+            "source_path": str(middle_path),
+            "file_type": ".md",
+            "content_preview": middle_path.read_text(encoding="utf-8"),
+            "last_modified": 200,
+            "indexed_at": "2026-07-01T00:00:00Z",
+        },
+        {
+            "id": "new",
+            "title": "【需求管理】《剑网3》周年庆预约小程序@20260720.md",
+            "source_path": str(new_path),
+            "file_type": ".md",
+            "content_preview": new_path.read_text(encoding="utf-8"),
+            "last_modified": 300,
+            "indexed_at": "2026-07-20T00:00:00Z",
+        },
+    ]
+    requirement_key = group_documents_by_requirement(documents)[0]["requirement_key"]
+
+    timeline = build_requirement_timeline(requirement_key, documents)
+
+    assert timeline["requirement"]["document_count"] == 3
+    assert [event["document"]["id"] for event in timeline["versions"]] == ["old", "middle", "new"]
+    assert len(timeline["change_events"]) == 2
+    assert timeline["change_events"][0]["field_change_count"] >= 1
+    assert timeline["change_events"][0]["risk_level"] in {"low", "medium", "high"}
+    assert timeline["recurring_modules"]
+    assert timeline["recommendations"]
