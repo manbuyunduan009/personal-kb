@@ -50,6 +50,7 @@ OPENAI_MODEL=gpt-4o-mini
 - `EMBEDDING_PROVIDER=hash` 用来先跑通项目，不需要下载模型；改成 `fastembed` 才是真实本地开源 embedding。
 - `HF_ENDPOINT` 用于模型下载。国内网络建议保留 `https://hf-mirror.com`。
 - `OPENAI_API_KEY` 不填时，只能做语义检索，不能生成 AI 回答。
+- `OPENAI_BASE_URL` 需要填写 OpenAI 兼容接口地址，通常要包含 `/v1`，例如 `https://example.com/v1`。
 - `EMBEDDING_PROVIDER=fastembed` 时，第一次索引会下载开源 embedding 模型到本机缓存，不会下载到项目目录。
 
 ## 4. 启动后端

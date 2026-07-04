@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 from .embeddings import EmbeddingProvider
 from .vector_store import VectorStore
@@ -50,24 +50,29 @@ class RagService:
         )
 
         client = OpenAI(api_key=self.openai_api_key, base_url=self.openai_base_url)
-        response = client.chat.completions.create(
-            model=self.openai_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是个人知识库问答助手。只能根据用户提供的资料回答。"
-                        "如果资料中没有依据，明确回答“文档中没有找到依据”。"
-                        "回答要简洁，并在关键结论后标注来源编号。"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": "资料：\n%s\n\n问题：%s" % (context or "无检索结果", question),
-                },
-            ],
-            temperature=0.2,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是个人知识库问答助手。只能根据用户提供的资料回答。"
+                            "如果资料中没有依据，明确回答“文档中没有找到依据”。"
+                            "回答要简洁，并在关键结论后标注来源编号。"
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": "资料：\n%s\n\n问题：%s" % (context or "无检索结果", question),
+                    },
+                ],
+            )
+        except OpenAIError as exc:
+            return {
+                "answer": "AI 调用失败：%s" % str(exc),
+                "citations": citations,
+            }
         return {
             "answer": response.choices[0].message.content or "",
             "citations": citations,

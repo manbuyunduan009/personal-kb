@@ -3,6 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 
 class Settings(BaseSettings):
@@ -32,6 +33,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(env_path, override=True)
     settings = Settings()
     if settings.hf_endpoint:
         os.environ.setdefault("HF_ENDPOINT", settings.hf_endpoint)
