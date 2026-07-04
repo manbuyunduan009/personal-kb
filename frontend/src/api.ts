@@ -151,6 +151,23 @@ export type ChangeAnalysis = {
   limitations: string[];
 };
 
+export type RequirementCard = {
+  requirement_key: string;
+  requirement_title: string;
+  project_name: string;
+  source_document: { id: string; title: string; source_path: string; file_type: string };
+  version_label: string;
+  document_count: number;
+  summary: string;
+  sections: Record<string, string[]>;
+  field_facts: Array<{ label: string; value: string; scope: string }>;
+  impact_modules: Array<{ label: string; matched_keywords: string[] }>;
+  open_questions: string[];
+  next_actions: string[];
+  signals: string[];
+  limitations: string[];
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -188,6 +205,10 @@ export function getTraces(limit = 12) {
 
 export function getProductRequirements() {
   return request<{ requirements: RequirementGroup[] }>("/api/product/requirements");
+}
+
+export function getRequirementCard(requirementKey: string) {
+  return request<RequirementCard>(`/api/product/requirements/${encodeURIComponent(requirementKey)}/card`);
 }
 
 export function analyzeChange(oldDocumentId: string, newDocumentId: string) {

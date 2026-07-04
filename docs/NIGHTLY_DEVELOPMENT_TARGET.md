@@ -18,6 +18,7 @@
 - 工具里出现“产品专家”入口。
 - 能看到系统识别出的需求分组。
 - 能看到每个需求下有哪些文档版本。
+- 能点击“查看卡片”，看到需求背景、目标、范围、规则、风险、验收点和待确认问题。
 - 如果同一需求有两个版本，能做变更分析。
 - 即使当前资料版本不足，也能看到清晰的提示和下一步工作方向。
 
@@ -98,6 +99,29 @@
 - 页面不需要新路由，仍然是工作台。
 - 能直接从当前页面看到产品专家能力。
 
+### P0-5 需求卡片
+
+状态：已完成。
+
+基于需求最新文档，规则抽取：
+
+- 需求背景
+- 目标
+- 用户/角色
+- 范围/功能
+- 关键规则
+- 风险点
+- 验收点
+- 文档字段
+- 待确认问题
+- 下一步动作
+
+验收标准：
+
+- 产品专家面板里每个需求都有“查看卡片”按钮。
+- 点击后能看到需求摘要、影响模块、待确认问题和下一步动作。
+- 卡片不调用 AI，不依赖真实 embedding。
+
 ## 3. 今晚 P1 范围
 
 时间允许再做：
@@ -124,11 +148,13 @@
 
 - `infer_requirement_identity(document)`
 - `group_documents_by_requirement(documents)`
+- `build_requirement_card(requirement_key, documents)`
 - `analyze_requirement_change(old_document, new_document)`
 
 新增 API：
 
 - `GET /api/product/requirements`
+- `GET /api/product/requirements/{requirement_key}/card`
 - `POST /api/product/change-analysis`
 
 ### 前端新增能力
@@ -137,6 +163,7 @@
 
 - `RequirementGroup`
 - `RequirementVersion`
+- `RequirementCard`
 - `ChangeAnalysis`
 
 新增 UI：
@@ -144,6 +171,7 @@
 - 产品专家面板
 - 需求分组列表
 - 版本数量和最新文档
+- 需求卡片按钮和卡片详情
 - 变更分析按钮
 - 变更摘要展示
 
@@ -169,19 +197,22 @@ npm run build
 2. 点击“索引文档”。
 3. 看右侧或中部是否出现“产品专家”区域。
 4. 查看需求分组是否合理。
-5. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
-6. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
+5. 点击“查看卡片”，确认能看到摘要、影响模块、待确认问题和下一步。
+6. 如果某个需求只有一个版本，确认页面提示“需要至少两个版本才能做变更对比”。
+7. 如果有两个版本，点击变更分析，确认能看到新增、删除、字段变化、影响模块。
 
 ### 当前验证结果
 
-- 后端测试：`63 passed`。
+- 后端测试：`64 passed`。
 - 前端构建：`npm run build` 通过。
 - 新增后端模块：`backend/app/product_expert.py`。
 - 新增 API：
   - `GET /api/product/requirements`
+  - `GET /api/product/requirements/{requirement_key}/card`
   - `POST /api/product/change-analysis`
 - 新增前端入口：右侧“产品专家”面板。
 - 临时后端 API 验证：`GET /api/product/requirements` 成功返回 4 个需求分组。
+- 临时后端 API 验证：`GET /api/product/requirements/{requirement_key}/card` 成功返回需求卡片。
 
 ## 7. 这一步的价值
 

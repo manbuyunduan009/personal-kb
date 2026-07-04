@@ -511,6 +511,12 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.requirement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .requirement-item button {
   display: inline-flex;
   width: fit-content;
@@ -538,6 +544,7 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.requirement-card,
 .change-analysis {
   display: grid;
   gap: 10px;
@@ -546,6 +553,7 @@ h3 {
   border-top: 1px solid rgba(32, 33, 29, 0.18);
 }
 
+.requirement-card p,
 .change-analysis p {
   margin: 0;
   line-height: 1.55;

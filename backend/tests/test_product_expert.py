@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from app.product_expert import analyze_requirement_change, group_documents_by_requirement, infer_requirement_identity
+from app.product_expert import (
+    analyze_requirement_change,
+    build_requirement_card,
+    group_documents_by_requirement,
+    infer_requirement_identity,
+)
 
 
 def test_infer_requirement_identity_from_title_and_preview():
@@ -94,3 +99,43 @@ def test_analyze_requirement_change_reports_added_removed_fields_and_impacts(tmp
     assert any(change["label"] == "期望完成日期" for change in result["field_changes"])
     assert any(module["label"] == "权限/登录" for module in result["impact_modules"])
     assert result["open_questions"]
+
+
+def test_build_requirement_card_extracts_product_sections(tmp_path: Path):
+    path = tmp_path / "prd.md"
+    path.write_text(
+        "\n".join(
+            [
+                "# 专题验收助手",
+                "需求背景：产品经理验收活动页面时容易遗漏规则。",
+                "目标：提升专题验收效率，降低线上问题。",
+                "目标用户：网站专题产品经理、测试同学。",
+                "功能范围：支持页面检查、规则校验和验收清单。",
+                "关键规则：检查结果必须带引用来源。",
+                "风险：不同活动页面结构差异较大。",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    documents = [
+        {
+            "id": "doc-1",
+            "title": "专题验收助手PRD.md",
+            "source_path": str(path),
+            "file_type": ".md",
+            "content_preview": path.read_text(encoding="utf-8"),
+            "last_modified": 100,
+            "indexed_at": "2026-07-01T00:00:00Z",
+        }
+    ]
+    requirement_key = group_documents_by_requirement(documents)[0]["requirement_key"]
+
+    card = build_requirement_card(requirement_key, documents)
+
+    assert card["requirement_title"] == "专题验收助手"
+    assert "提升专题验收效率" in card["sections"]["goals"][0]
+    assert card["sections"]["scope"]
+    assert card["sections"]["risks"]
+    assert card["impact_modules"]
+    assert any("历史版本" in question for question in card["open_questions"])
+    assert card["next_actions"]

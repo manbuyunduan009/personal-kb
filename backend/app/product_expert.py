@@ -16,6 +16,15 @@ IMPACT_RULES = [
     ("数据统计", ["数据", "统计", "埋点", "日志", "报表"]),
     ("验收测试", ["验收", "测试", "校验", "异常", "兼容"]),
 ]
+CARD_SECTIONS = [
+    ("background", "需求背景", ["背景", "痛点", "问题", "目的", "价值", "为什么"]),
+    ("goals", "目标", ["目标", "目的", "期望", "成功", "指标", "收益"]),
+    ("users", "用户/角色", ["用户", "角色", "对象", "玩家", "人群", "产品经理", "运营", "测试"]),
+    ("scope", "范围/功能", ["需求", "功能", "模块", "页面", "入口", "小程序", "预约", "票务", "导航", "配置"]),
+    ("rules", "关键规则", ["规则", "流程", "逻辑", "条件", "限制", "状态", "授权", "登录", "免登"]),
+    ("risks", "风险点", ["风险", "注意", "异常", "兼容", "依赖", "问题", "不支持", "限制"]),
+    ("acceptance", "验收点", ["验收", "测试", "标准", "校验", "完成", "检查", "用例"]),
+]
 
 
 def group_documents_by_requirement(documents: List[Dict[str, object]]) -> List[Dict[str, object]]:
@@ -181,6 +190,50 @@ def analyze_requirement_change(
     }
 
 
+def build_requirement_card(requirement_key: str, documents: List[Dict[str, object]]) -> Dict[str, object]:
+    groups = group_documents_by_requirement(documents)
+    group = next((item for item in groups if item["requirement_key"] == requirement_key), None)
+    if group is None:
+        raise KeyError(requirement_key)
+
+    latest = group.get("latest_document") or {}
+    latest_document_id = str(latest.get("document_id", ""))
+    latest_document = next(
+        (document for document in documents if str(document.get("id", "")) == latest_document_id),
+        documents[0] if documents else {},
+    )
+    text = load_document_text(latest_document)
+    lines = normalize_lines(text)
+    field_facts = extract_field_facts(text, scope="document")
+    impact_modules = infer_impact_modules(lines)
+    sections = {
+        key: extract_section_lines(lines, keywords, fallback=(key == "scope"))
+        for key, _, keywords in CARD_SECTIONS
+    }
+    open_questions = build_card_open_questions(sections, field_facts, impact_modules, group)
+
+    return {
+        "requirement_key": group["requirement_key"],
+        "requirement_title": group["requirement_title"],
+        "project_name": group["project_name"],
+        "source_document": document_ref(latest_document),
+        "version_label": latest.get("version_label", ""),
+        "document_count": group["document_count"],
+        "summary": build_card_summary(group, sections, field_facts, impact_modules),
+        "sections": sections,
+        "field_facts": field_facts[:12],
+        "impact_modules": impact_modules,
+        "open_questions": open_questions,
+        "next_actions": build_next_actions(sections, impact_modules, group),
+        "signals": group.get("signals", []),
+        "limitations": [
+            "v0.1 使用规则抽取，不调用 AI。",
+            "正式效果需要办公电脑上的完整历史资料和真实问题集验证。",
+            "卡片是产品分析入口，不替代原始需求文档和人工确认。",
+        ],
+    }
+
+
 def load_document_text(document: Dict[str, object]) -> str:
     path = Path(str(document.get("source_path", "")))
     if path.exists():
@@ -311,6 +364,98 @@ def build_change_summary(
         len(field_changes),
         modules,
     )
+
+
+def extract_section_lines(lines: List[str], keywords: List[str], fallback: bool = False) -> List[str]:
+    matched = []
+    for line in lines:
+        if any(keyword.lower() in line.lower() for keyword in keywords):
+            matched.append(line)
+    if not matched and fallback:
+        matched = lines[:6]
+    return trim_lines(matched, limit=8, max_chars=180)
+
+
+def trim_lines(lines: List[str], limit: int, max_chars: int) -> List[str]:
+    trimmed = []
+    for line in lines:
+        cleaned = line.strip()
+        if len(cleaned) > max_chars:
+            cleaned = cleaned[:max_chars].rstrip() + "..."
+        if cleaned and cleaned not in trimmed:
+            trimmed.append(cleaned)
+        if len(trimmed) >= limit:
+            break
+    return trimmed
+
+
+def build_card_summary(
+    group: Dict[str, object],
+    sections: Dict[str, List[str]],
+    field_facts: List[Dict[str, str]],
+    impact_modules: List[Dict[str, object]],
+) -> str:
+    facts = fact_map(field_facts)
+    target = ""
+    if sections.get("goals"):
+        target = sections["goals"][0]
+    elif sections.get("background"):
+        target = sections["background"][0]
+    modules = "、".join(str(module.get("label", "")) for module in impact_modules[:4]) or "未识别"
+    owner = facts.get("项目/部门所属") or facts.get("项目") or str(group.get("project_name", ""))
+    return "%s / %s：%s可能涉及 %s。" % (
+        owner or "未识别项目",
+        group.get("requirement_title", ""),
+        (target + "；") if target else "",
+        modules,
+    )
+
+
+def build_card_open_questions(
+    sections: Dict[str, List[str]],
+    field_facts: List[Dict[str, str]],
+    impact_modules: List[Dict[str, object]],
+    group: Dict[str, object],
+) -> List[str]:
+    questions = []
+    facts = fact_map(field_facts)
+    if not sections.get("goals"):
+        questions.append("需求目标没有被清晰抽取，建议补充可验收的目标或成功指标。")
+    if not sections.get("acceptance"):
+        questions.append("验收标准没有被清晰抽取，建议补充测试口径和通过条件。")
+    if not facts:
+        questions.append("文档级字段较少，建议补充项目、负责人、排期、对接人等基础信息。")
+    if int(group.get("document_count", 0)) < 2:
+        questions.append("当前只识别到 1 个版本，后续需要更多历史版本才能分析变化趋势。")
+
+    labels = {str(module.get("label", "")) for module in impact_modules}
+    if "权限/登录" in labels:
+        questions.append("涉及登录或授权，建议确认未登录、授权失败、切环境等异常态。")
+    if "接口/后端" in labels:
+        questions.append("涉及接口或配置，建议确认返回字段、默认值和前后端兜底逻辑。")
+    if "业务规则" in labels:
+        questions.append("涉及业务规则，建议确认边界条件、重复操作和运营配置口径。")
+    return _unique_strings(questions)[:10]
+
+
+def build_next_actions(
+    sections: Dict[str, List[str]],
+    impact_modules: List[Dict[str, object]],
+    group: Dict[str, object],
+) -> List[str]:
+    actions = [
+        "用原始文档核对需求卡片是否准确。",
+        "把不准确的抽取结果记录成后续规则优化样例。",
+    ]
+    if int(group.get("document_count", 0)) >= 2:
+        actions.append("对最新两个版本执行变更分析，确认新增、删除和字段变化。")
+    else:
+        actions.append("补充同一需求的历史版本后，再做变更趋势分析。")
+    if sections.get("risks"):
+        actions.append("把风险点转成测试关注点和验收清单。")
+    if impact_modules:
+        actions.append("按影响模块同步产品、研发、测试和运营。")
+    return _unique_strings(actions)
 
 
 def document_ref(document: Dict[str, object]) -> Dict[str, object]:

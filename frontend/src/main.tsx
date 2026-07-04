@@ -24,9 +24,11 @@ import {
   getDocuments,
   getHealth,
   getProductRequirements,
+  getRequirementCard,
   getTraces,
   Health,
   IndexResult,
+  RequirementCard,
   RagTrace,
   RequirementGroup,
   runIndex,
@@ -57,9 +59,10 @@ function App() {
   const [results, setResults] = useState<SearchHit[]>([]);
   const [traces, setTraces] = useState<RagTrace[]>([]);
   const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
+  const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "boot" | "">("boot");
+  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "card" | "boot" | "">("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
@@ -193,6 +196,22 @@ function App() {
       const result = await analyzeChange(previous.document_id, latest.document_id);
       setChangeAnalysis(result);
       setProductMessage(`已分析：${group.requirement_title} 的最新两个版本。`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
+    }
+  }
+
+  async function handleLoadRequirementCard(group: RequirementGroup) {
+    setProductMessage("");
+    setRequirementCard(null);
+    setLoading("card");
+    setError("");
+    try {
+      const card = await getRequirementCard(group.requirement_key);
+      setRequirementCard(card);
+      setProductMessage(`已生成需求卡片：${group.requirement_title}`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -465,13 +484,49 @@ function App() {
                       </span>
                     ))}
                   </div>
-                  <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
-                    {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
-                    分析最新变化
-                  </button>
+                  <div className="requirement-actions">
+                    <button onClick={() => handleLoadRequirementCard(group)} disabled={loading === "card"}>
+                      {loading === "card" ? <Loader2 className="spin" size={15} /> : <BookOpen size={15} />}
+                      查看卡片
+                    </button>
+                    <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
+                      {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
+                      分析变化
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
+
+            {requirementCard && (
+              <article className="requirement-card">
+                <h3>需求卡片</h3>
+                <p>{requirementCard.summary}</p>
+                <div className="keyword-tags">
+                  {requirementCard.impact_modules.map((module) => (
+                    <span key={module.label}>{module.label}</span>
+                  ))}
+                </div>
+                <CardSection title="背景" items={requirementCard.sections.background || []} />
+                <CardSection title="目标" items={requirementCard.sections.goals || []} />
+                <CardSection title="用户/角色" items={requirementCard.sections.users || []} />
+                <CardSection title="范围/功能" items={requirementCard.sections.scope || []} />
+                <CardSection title="关键规则" items={requirementCard.sections.rules || []} />
+                <CardSection title="风险点" items={requirementCard.sections.risks || []} />
+                <CardSection title="验收点" items={requirementCard.sections.acceptance || []} />
+                {requirementCard.field_facts.length > 0 && (
+                  <div className="field-change-list">
+                    {requirementCard.field_facts.slice(0, 6).map((fact) => (
+                      <span key={`${fact.label}-${fact.value}`}>
+                        {fact.label}: {fact.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <ChangeList title="待确认" items={requirementCard.open_questions} />
+                <ChangeList title="下一步" items={requirementCard.next_actions} />
+              </article>
+            )}
 
             {changeAnalysis && (
               <article className="change-analysis">
@@ -628,6 +683,11 @@ function ChangeList({ title, items }: { title: string; items: string[] }) {
       ))}
     </div>
   );
+}
+
+function CardSection({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return <ChangeList title={title} items={items} />;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

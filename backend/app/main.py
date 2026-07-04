@@ -7,7 +7,7 @@ from .config import get_settings
 from .db import DocumentRepository
 from .embeddings import create_embedding_provider
 from .indexer import Indexer
-from .product_expert import analyze_requirement_change, group_documents_by_requirement
+from .product_expert import analyze_requirement_change, build_requirement_card, group_documents_by_requirement
 from .rag import RagService
 from .schemas import ChangeAnalysisRequest, ChatRequest, FeedbackRequest, SearchRequest
 from .vector_store import VectorStore
@@ -167,6 +167,16 @@ def list_rag_traces(limit: int = Query(default=20, ge=1, le=100)):
 def list_product_requirements():
     _, repository = repository_service()
     return {"requirements": group_documents_by_requirement(repository.list_documents())}
+
+
+@app.get("/api/product/requirements/{requirement_key}/card")
+def get_product_requirement_card(requirement_key: str):
+    _, repository = repository_service()
+    documents = repository.list_documents()
+    try:
+        return build_requirement_card(requirement_key, documents)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Requirement not found") from exc
 
 
 @app.post("/api/product/change-analysis")
