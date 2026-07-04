@@ -50,6 +50,7 @@ CHAT_CASES = [
     {
         "question": "火星移民方案预算是多少？",
         "expect_no_evidence": True,
+        "expect_rescue_attempted": True,
     },
 ]
 
@@ -115,12 +116,15 @@ def main() -> int:
 
         answer = result.get("answer", "")
         citations = result.get("citations", [])
+        self_rag = result.get("self_rag", {})
         citation_titles = [item.get("title", "") for item in citations]
 
         if case.get("expect_no_evidence"):
             passed = "文档中没有找到依据" in answer and not citations
         else:
             passed = case["expected_title"] in citation_titles
+        if case.get("expect_rescue_attempted") and not self_rag.get("rescue_attempted"):
+            passed = False
 
         if not passed:
             chat_failures += 1
@@ -132,6 +136,16 @@ def main() -> int:
         else:
             print("expected citation:", case["expected_title"])
         print("answer:", answer.replace("\n", " ")[:160])
+        if self_rag:
+            print(
+                "self_rag: status=%s initial=%.3f final=%.3f rescued=%s"
+                % (
+                    self_rag.get("status", ""),
+                    float(self_rag.get("initial_best_score", 0.0)),
+                    float(self_rag.get("final_best_score", 0.0)),
+                    self_rag.get("rescued", False),
+                )
+            )
         for index, citation in enumerate(citations[:3], start=1):
             print(
                 "%s. score=%.3f title=%s chunk=%s"

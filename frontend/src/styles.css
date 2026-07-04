@@ -244,6 +244,7 @@ h3 {
 }
 
 .answer,
+.self-rag,
 .citations,
 .preview,
 .hit {
@@ -257,6 +258,38 @@ h3 {
   margin-bottom: 0;
   white-space: pre-wrap;
   line-height: 1.65;
+}
+
+.self-rag-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.18);
+  background: #ebe3d2;
+  font-size: 12px;
+}
+
+.self-rag-grid span {
+  color: #6b665d;
+}
+
+.rescue-queries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.rescue-queries span {
+  max-width: 100%;
+  padding: 5px 7px;
+  border: 1px solid rgba(32, 33, 29, 0.24);
+  border-radius: 999px;
+  overflow-wrap: anywhere;
+  background: #f8f5ec;
+  color: #4a4840;
+  font-size: 12px;
 }
 
 .citation {

@@ -23,7 +23,7 @@
 | 09 | Sentence Window Retrieval | 命中核心句后自动向前后扩展，适合长文档和强上下文资料。 | 使用相邻 chunk 的前后窗口作为 prompt 上下文。 |
 | 10 | Context Compression | 检索结果太长时，先压缩再喂给大模型，减少噪声和 token 浪费。 | 根据问题关键词挑选相关句子，限制每条上下文长度。 |
 | 11 | Feedback Loop | 收集点赞、点踩、采用率，长期提升常用正确文档权重。 | 已做 v0：前端可反馈，后端存表，rerank 读取反馈分。 |
-| 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时拒答。 | 已做 v1：低于证据阈值直接拒答，只把达标片段交给 AI。 |
+| 12 | Self-RAG | 回答前自检资料是否足够，剔除无用资料，不足时先补救，仍不足再拒答。 | 已做 v2：低分时自动二次检索补救，并把补救过程返回前端。 |
 
 ## 3. 模块状态和持续优化入口
 
@@ -42,7 +42,7 @@
 | Sentence Window Retrieval | 已完成 v0 | 回答时把命中 chunk 的前后窗口一起放进上下文。 | `backend/app/rag.py` | 根据命中句定位更精确的句子窗口；长文档按段落窗口扩展。 |
 | Context Compression | 已完成 v0 | 超长上下文按问题关键词挑相关句子，并限制长度。 | `backend/app/retrieval.py`, `backend/app/rag.py` | 用 LLM 压缩；保留表格行标题；按引用来源分别压缩。 |
 | Feedback Loop | 已完成 v0 | 前端对引用/检索结果点赞点踩；后端存 `feedback` 表；rerank 用反馈分小幅加权。 | `backend/app/db.py`, `backend/app/main.py`, `backend/app/retrieval.py`, `frontend/src/main.tsx` | 加反馈备注；按问题相似度加权；做“已反馈”状态；加入评测报表。 |
-| Self-RAG | 已完成 v1 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；最高分低于阈值时直接拒答。 | `backend/app/rag.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py` | 调整阈值；增加按问题类型的阈值；生成后做引用一致性检查。 |
+| Self-RAG | 已完成 v2 | Prompt 要求判断资料是否支持问题；回答前过滤低分 chunk；首次证据不足时生成补救 query、扩大召回再检索；补救后仍不足才拒答；前端展示 Self-RAG 检查状态。 | `backend/app/rag.py`, `backend/app/config.py`, `backend/scripts/eval_retrieval.py`, `frontend/src/main.tsx` | 接 LLM query rewrite；增加按问题类型的阈值；让模型做引用一致性检查；记录补救命中率。 |
 
 ## 4. 已完成模块的实现说明
 
@@ -173,20 +173,29 @@
 1. 系统 prompt 要求回答前判断资料是否直接支持问题。
 2. `MIN_EVIDENCE_SCORE` 控制最低证据阈值，默认 `0.30`。
 3. 问答前过滤低分 chunk，只把达标片段交给 AI。
-4. 如果没有达标片段，直接回答“文档中没有找到依据”，不调用 AI。
-5. 评测脚本增加 `CHAT` 检查：正常问题必须带引用，无依据问题必须拒答。
+4. 如果第一次没有达标片段，不马上拒答，而是生成补救 query，扩大召回范围再检索一次。
+5. 如果二次检索找到达标证据，就继续交给 AI 回答；如果仍然不足，才回答“文档中没有找到依据”。
+6. API 返回 `self_rag` 状态，包括是否触发补救、补救 query、初始最高分、最终最高分、证据阈值。
+7. 前端展示 Self-RAG 检查状态，方便判断问题是“第一次就找到”还是“二次补救后找到”。
+8. 评测脚本增加 `CHAT` 检查：正常问题必须带引用，无依据问题必须拒答。
 
 为什么这样做：
 
 - 检索分数太低时，AI 很容易把弱相关资料包装成看似合理的答案。
-- 先用阈值做第一道门，可以减少“硬答”和幻觉。
+- 先用阈值做第一道门，可以减少“硬答”和幻觉；但直接拒答太粗暴，所以低分时先补救检索。
 - 阈值是可调参数，后续要靠评测集慢慢校准。
+
+当前边界：
+
+- v2 的补救 query 还是规则生成，不额外调用 LLM 改写问题。
+- v2 是“检索补救”，还不是完整 Self-RAG 论文里的多步自问、自评、过滤闭环。
+- 下一版可以让在线模型生成更自然的 query rewrite，再让模型判断“引用是否真的支撑答案”。
 
 后续你可以单独优化：
 
 - 将 `MIN_EVIDENCE_SCORE` 按不同 embedding 模型单独配置。
 - 对“关键词强命中”和“语义强命中”设置不同阈值。
-- 让模型先输出“证据是否足够”的内部判断，再生成最终回答。
+- 让模型生成 query rewrite，并输出“证据是否足够”的内部判断，再生成最终回答。
 - 对生成结果做引用一致性检查。
 
 ### 4.8 Field-aware Retrieval

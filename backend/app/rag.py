@@ -69,8 +69,21 @@ class RagService:
             return []
 
         variants = query_variants(query)
+        return self._search_with_variants(
+            original_query=query,
+            variants=variants,
+            limit=limit,
+            expanded_limit=max(limit * 4, 20),
+        )
+
+    def _search_with_variants(
+        self,
+        original_query: str,
+        variants: List[str],
+        limit: int,
+        expanded_limit: int,
+    ) -> List[Dict[str, object]]:
         query_vectors = self.embeddings.embed(variants)
-        expanded_limit = max(limit * 4, 20)
         merged: Dict[str, Dict[str, object]] = {}
 
         for variant, query_vector in zip(variants, query_vectors):
@@ -92,41 +105,81 @@ class RagService:
                         float(hit.get("score", 0.0)),
                     )
 
-        for hit in keyword_recall_hits(query, self.vector_store.list_chunks(), limit=expanded_limit):
-            key = str(hit.get("id") or "%s:%s" % (
-                hit["metadata"].get("document_id", ""),
-                hit["metadata"].get("chunk_index", ""),
-            ))
-            existing = merged.get(key)
-            if existing is None:
-                merged[key] = hit
-                continue
+        all_chunks = self.vector_store.list_chunks()
+        for variant in variants:
+            for hit in keyword_recall_hits(variant, all_chunks, limit=expanded_limit):
+                key = str(hit.get("id") or "%s:%s" % (
+                    hit["metadata"].get("document_id", ""),
+                    hit["metadata"].get("chunk_index", ""),
+                ))
+                existing = merged.get(key)
+                if existing is None:
+                    hit["matched_query"] = variant
+                    merged[key] = hit
+                    continue
 
-            existing["keyword_recall_score"] = max(
-                float(existing.get("keyword_recall_score", 0.0)),
-                float(hit.get("keyword_recall_score", 0.0)),
-            )
-            existing["retrieval_mode"] = "hybrid"
+                existing["keyword_recall_score"] = max(
+                    float(existing.get("keyword_recall_score", 0.0)),
+                    float(hit.get("keyword_recall_score", 0.0)),
+                )
+                existing["retrieval_mode"] = "hybrid"
 
-        return rerank_hits(query, list(merged.values()), limit=limit, feedback_scores=self.feedback_scores)
+        return rerank_hits(original_query, list(merged.values()), limit=limit, feedback_scores=self.feedback_scores)
 
     def answer(self, question: str) -> Dict[str, object]:
         hits = self.search(question, limit=5)
+        initial_best_score = self._best_score(hits)
         evidence_hits = self._evidence_hits(question, hits)
+        self_rag = self._self_rag_status(
+            rescue_attempted=False,
+            rescued=False,
+            rescue_queries=[],
+            initial_best_score=initial_best_score,
+            final_best_score=initial_best_score,
+            evidence_count=len(evidence_hits),
+        )
+
+        if not evidence_hits:
+            rescue_queries = self._rescue_queries(question, hits)
+            if rescue_queries:
+                rescued_hits = self._search_with_variants(
+                    original_query=question,
+                    variants=rescue_queries,
+                    limit=5,
+                    expanded_limit=60,
+                )
+                for hit in rescued_hits:
+                    hit["retrieval_stage"] = "rescue"
+                rescued_evidence_hits = self._evidence_hits(question, rescued_hits)
+                if rescued_evidence_hits:
+                    hits = rescued_hits
+                    evidence_hits = rescued_evidence_hits
+                final_best_score = self._best_score(rescued_hits or hits)
+                self_rag = self._self_rag_status(
+                    rescue_attempted=True,
+                    rescued=bool(rescued_evidence_hits),
+                    rescue_queries=rescue_queries,
+                    initial_best_score=initial_best_score,
+                    final_best_score=final_best_score,
+                    evidence_count=len(evidence_hits),
+                )
         citations = [self._citation_from_hit(hit) for hit in evidence_hits]
 
         if not evidence_hits:
-            best_score = max((float(hit.get("score", 0.0)) for hit in hits), default=0.0)
+            best_score = self_rag["final_best_score"]
+            rescue_note = "已尝试二次检索补救，仍未找到足够证据。" if self_rag["rescue_attempted"] else ""
             return {
-                "answer": "%s 最高相关度 %.2f，阈值 %.2f。"
-                % (INSUFFICIENT_EVIDENCE_MESSAGE, best_score, self.min_evidence_score),
+                "answer": "%s %s最高相关度 %.2f，阈值 %.2f。"
+                % (INSUFFICIENT_EVIDENCE_MESSAGE, rescue_note, best_score, self.min_evidence_score),
                 "citations": [],
+                "self_rag": self_rag,
             }
 
         if not self.openai_api_key:
             return {
                 "answer": "OPENAI_API_KEY is not configured. Semantic search is available, but AI answers need an OpenAI-compatible API key.",
                 "citations": citations,
+                "self_rag": self_rag,
             }
 
         context = "\n\n".join(
@@ -165,10 +218,67 @@ class RagService:
             return {
                 "answer": "AI 调用失败：%s" % str(exc),
                 "citations": citations,
+                "self_rag": self_rag,
             }
         return {
             "answer": response.choices[0].message.content or "",
             "citations": citations,
+            "self_rag": self_rag,
+        }
+
+    def _rescue_queries(self, question: str, initial_hits: List[Dict[str, object]]) -> List[str]:
+        candidates: List[str] = []
+
+        def add(query: str) -> None:
+            cleaned = " ".join(query.split()).strip()
+            if cleaned and cleaned not in candidates:
+                candidates.append(cleaned)
+
+        for variant in query_variants(question):
+            add(variant)
+
+        simplified = (
+            question.replace("请问", "")
+            .replace("一下", "")
+            .replace("这个", "")
+            .replace("那个", "")
+            .replace("吗", "")
+            .replace("？", "")
+            .replace("?", "")
+        )
+        add(simplified)
+        return candidates[:8]
+
+    @staticmethod
+    def _best_score(hits: List[Dict[str, object]]) -> float:
+        return max((float(hit.get("score", 0.0)) for hit in hits), default=0.0)
+
+    def _self_rag_status(
+        self,
+        rescue_attempted: bool,
+        rescued: bool,
+        rescue_queries: List[str],
+        initial_best_score: float,
+        final_best_score: float,
+        evidence_count: int,
+    ) -> Dict[str, object]:
+        if rescued:
+            status = "rescued"
+        elif evidence_count:
+            status = "sufficient"
+        elif rescue_attempted:
+            status = "insufficient_after_rescue"
+        else:
+            status = "insufficient"
+        return {
+            "status": status,
+            "rescue_attempted": rescue_attempted,
+            "rescued": rescued,
+            "rescue_queries": rescue_queries,
+            "initial_best_score": round(initial_best_score, 4),
+            "final_best_score": round(final_best_score, 4),
+            "min_evidence_score": self.min_evidence_score,
+            "evidence_count": evidence_count,
         }
 
     def _evidence_hits(self, question: str, hits: List[Dict[str, object]]) -> List[Dict[str, object]]:

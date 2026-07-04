@@ -25,6 +25,7 @@ import {
   runIndex,
   search,
   SearchHit,
+  SelfRagStatus,
   submitFeedback
 } from "./api";
 import "./styles.css";
@@ -50,6 +51,7 @@ function App() {
   const [loading, setLoading] = useState<"index" | "search" | "chat" | "boot" | "">("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
+  const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackLoadingKey, setFeedbackLoadingKey] = useState("");
 
@@ -95,6 +97,7 @@ function App() {
       const data = await search(question);
       setResults(data.results);
       setLastSearchQuery(question);
+      setSelfRag(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -110,6 +113,7 @@ function App() {
       const data = await chat(question);
       setAnswer(data.answer);
       setCitations(data.citations);
+      setSelfRag(data.self_rag);
       const searchData = await search(question);
       setResults(searchData.results);
       setLastSearchQuery(question);
@@ -250,6 +254,29 @@ function App() {
             <p>{answer || "先索引文档，再输入问题。没有配置 OPENAI_API_KEY 时，语义检索仍可用，AI 回答会显示明确的配置提示。"}</p>
           </article>
 
+          {selfRag && (
+            <article className="self-rag">
+              <h3>Self-RAG 检查</h3>
+              <div className="self-rag-grid">
+                <span>状态</span>
+                <b>{selfRagStatusLabel(selfRag.status)}</b>
+                <span>初始最高分</span>
+                <b>{selfRag.initial_best_score.toFixed(2)}</b>
+                <span>最终最高分</span>
+                <b>{selfRag.final_best_score.toFixed(2)}</b>
+                <span>证据阈值</span>
+                <b>{selfRag.min_evidence_score.toFixed(2)}</b>
+              </div>
+              {selfRag.rescue_attempted && selfRag.rescue_queries.length > 0 && (
+                <div className="rescue-queries">
+                  {selfRag.rescue_queries.map((query) => (
+                    <span key={query}>{query}</span>
+                  ))}
+                </div>
+              )}
+            </article>
+          )}
+
           <article className="citations">
             <h3>引用来源</h3>
             {citations.length === 0 && <p className="empty">还没有引用来源。</p>}
@@ -339,6 +366,13 @@ function retrievalModeLabel(mode: string) {
   if (mode === "hybrid") return "混合";
   if (mode === "keyword") return "关键词";
   return "向量";
+}
+
+function selfRagStatusLabel(status: SelfRagStatus["status"]) {
+  if (status === "rescued") return "二次检索后通过";
+  if (status === "insufficient_after_rescue") return "补救后仍不足";
+  if (status === "insufficient") return "证据不足";
+  return "证据充足";
 }
 
 function FeedbackActions({

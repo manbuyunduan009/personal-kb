@@ -59,6 +59,17 @@ export type Citation = {
   feedback_score?: number;
 };
 
+export type SelfRagStatus = {
+  status: "sufficient" | "rescued" | "insufficient" | "insufficient_after_rescue";
+  rescue_attempted: boolean;
+  rescued: boolean;
+  rescue_queries: string[];
+  initial_best_score: number;
+  final_best_score: number;
+  min_evidence_score: number;
+  evidence_count: number;
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -98,7 +109,7 @@ export function search(query: string, limit = 5) {
 }
 
 export function chat(question: string) {
-  return request<{ answer: string; citations: Citation[] }>("/api/chat", {
+  return request<{ answer: string; citations: Citation[]; self_rag: SelfRagStatus }>("/api/chat", {
     method: "POST",
     body: JSON.stringify({ question })
   });
