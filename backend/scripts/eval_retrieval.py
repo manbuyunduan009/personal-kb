@@ -25,6 +25,10 @@ CASES = [
         "expected_title": "【需求管理】《剑网3》十七周年庆线下活动小程序.docx",
     },
     {
+        "question": "周年庆是哪个游戏的？",
+        "expected_title": "【需求管理】《剑网3》十七周年庆线下活动小程序.docx",
+    },
+    {
         "question": "专项进度计划表里有哪些阶段？",
         "expected_title": "2026年-剑网3-十七周年庆专项进度计划表@260712.xlsx",
     },
@@ -37,6 +41,10 @@ CHAT_CASES = [
     },
     {
         "question": "十七周年庆小程序有哪些需求？",
+        "expected_title": "【需求管理】《剑网3》十七周年庆线下活动小程序.docx",
+    },
+    {
+        "question": "周年庆是哪个游戏的？",
         "expected_title": "【需求管理】《剑网3》十七周年庆线下活动小程序.docx",
     },
     {

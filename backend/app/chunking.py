@@ -1,5 +1,27 @@
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+
+DOCUMENT_ATTRIBUTE_MARKERS = [
+    "项目",
+    "所属",
+    "游戏",
+    "产品",
+    "部门",
+    "域名",
+    "概域名",
+    "对接人",
+    "负责人",
+    "联系人",
+    "日期",
+    "时间",
+    "编号",
+    "单号",
+    "WorkTile",
+]
+OWNERSHIP_ATTRIBUTE_MARKERS = ["项目", "所属", "游戏", "产品", "部门"]
+PERSON_ATTRIBUTE_MARKERS = ["对接人", "负责人", "联系人"]
+TIME_ATTRIBUTE_MARKERS = ["日期", "时间", "排期", "完成"]
 
 
 def split_text(text: str, chunk_size: int = 800, overlap: int = 120) -> List[str]:
@@ -36,10 +58,13 @@ def build_chunk_records(
 ) -> List[Dict[str, object]]:
     """Build enriched chunk records for indexing and answer context."""
     chunks = split_text(text, chunk_size=chunk_size, overlap=overlap)
+    document_facts = extract_field_facts(text, scope="document")
     records = []
     for index, chunk in enumerate(chunks):
         header = infer_chunk_header(document_title, chunk)
-        generated_questions = generate_potential_questions(document_title, header, chunk)
+        chunk_facts = extract_field_facts(chunk, scope="chunk")
+        field_facts = merge_field_facts(document_facts, chunk_facts)
+        generated_questions = generate_potential_questions(document_title, header, chunk, field_facts)
         previous_context = chunks[index - 1][-260:] if index > 0 else ""
         next_context = chunks[index + 1][:260] if index + 1 < len(chunks) else ""
         embedding_text = "\n".join(
@@ -47,6 +72,8 @@ def build_chunk_records(
             for part in [
                 "文档：%s" % document_title,
                 "章节：%s" % header,
+                "文档属性：%s" % format_field_facts(document_facts),
+                "局部字段：%s" % format_field_facts(chunk_facts),
                 "可能问题：%s" % "；".join(generated_questions),
                 "正文：%s" % chunk,
             ]
@@ -56,6 +83,9 @@ def build_chunk_records(
             {
                 "content": chunk,
                 "chunk_header": header,
+                "document_facts": document_facts,
+                "chunk_facts": chunk_facts,
+                "field_facts": field_facts,
                 "generated_questions": generated_questions,
                 "previous_context": previous_context,
                 "next_context": next_context,
@@ -90,7 +120,12 @@ def infer_chunk_header(document_title: str, chunk: str) -> str:
     return document_title.rsplit(".", 1)[0]
 
 
-def generate_potential_questions(document_title: str, header: str, chunk: str) -> List[str]:
+def generate_potential_questions(
+    document_title: str,
+    header: str,
+    chunk: str,
+    field_facts: Optional[List[Dict[str, str]]] = None,
+) -> List[str]:
     """Rule-based document augmentation for the first teaching version."""
     haystack = "%s %s %s" % (document_title, header, chunk[:500])
     questions = []
@@ -117,8 +152,94 @@ def generate_potential_questions(document_title: str, header: str, chunk: str) -
         add("%s的验收标准是什么？" % topic)
     if any(word in haystack for word in ["规则", "奖励", "任务", "活动"]):
         add("%s有哪些活动规则和任务？" % topic)
+    if has_document_attribute_field(field_facts or []):
+        add("%s的基础信息是什么？" % topic)
+    if has_field_label(field_facts or [], OWNERSHIP_ATTRIBUTE_MARKERS):
+        add("%s是哪个项目的？" % topic)
+        add("%s是哪个游戏的？" % topic)
+        add("%s属于哪个项目或部门？" % topic)
+        add("项目/部门所属是什么？")
+    if has_field_label(field_facts or [], PERSON_ATTRIBUTE_MARKERS):
+        add("%s的负责人或对接人是谁？" % topic)
+    if has_field_label(field_facts or [], TIME_ATTRIBUTE_MARKERS):
+        add("%s有哪些关键日期或时间？" % topic)
 
-    return questions[:6]
+    return questions[:9]
+
+
+def extract_field_facts(text: str, scope: str = "chunk") -> List[Dict[str, str]]:
+    facts = []
+    for line in text.splitlines():
+        cells = [clean_table_cell(cell) for cell in line.split("|")]
+        cells = [cell for cell in cells if cell]
+        if len(cells) >= 2:
+            for index in range(0, len(cells) - 1, 2):
+                label = cells[index]
+                value = cells[index + 1]
+                if is_field_label(label) and is_field_value(value):
+                    facts.append({"label": label, "value": value, "scope": scope})
+            continue
+
+        for match in re.finditer(r"([^：:\n]{2,24})[：:]\s*([^：:\n]{2,80})", line):
+            label = clean_table_cell(match.group(1))
+            value = clean_table_cell(match.group(2))
+            if is_field_label(label) and is_field_value(value):
+                facts.append({"label": label, "value": value, "scope": scope})
+
+    deduped = []
+    seen = set()
+    for fact in facts:
+        key = (fact["label"], fact["value"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(fact)
+    return deduped[:12]
+
+
+def merge_field_facts(*fact_groups: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    merged = []
+    seen = set()
+    for facts in fact_groups:
+        for fact in facts:
+            key = (fact.get("label", ""), fact.get("value", ""))
+            if key not in seen:
+                seen.add(key)
+                merged.append(fact)
+    return merged[:18]
+
+
+def clean_table_cell(value: str) -> str:
+    return value.strip().strip("*").strip()
+
+
+def is_field_label(value: str) -> bool:
+    if len(value) > 24:
+        return False
+    if any(marker in value for marker in ["。", "，", "；", ";", "？", "?", "是否"]):
+        return False
+    return any(marker in value for marker in DOCUMENT_ATTRIBUTE_MARKERS)
+
+
+def is_field_value(value: str) -> bool:
+    if not value or value in {"/", "-", "无", "不涉及"}:
+        return False
+    return len(value) <= 120
+
+
+def has_document_attribute_field(field_facts: List[Dict[str, str]]) -> bool:
+    return has_field_label(field_facts, DOCUMENT_ATTRIBUTE_MARKERS)
+
+
+def has_field_label(field_facts: List[Dict[str, str]], markers: List[str]) -> bool:
+    for fact in field_facts:
+        label = fact.get("label", "")
+        if any(marker in label for marker in markers):
+            return True
+    return False
+
+
+def format_field_facts(field_facts: List[Dict[str, str]]) -> str:
+    return "；".join("%s: %s" % (fact["label"], fact["value"]) for fact in field_facts)
 
 
 def summarize_text(text: str, limit: int = 220) -> str:

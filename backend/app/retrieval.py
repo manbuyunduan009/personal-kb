@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 QUERY_EXPANSIONS = [
     (["需求", "功能", "模块", "页面"], "需求 功能 模块 页面 规则 验收"),
+    (["哪个游戏", "哪个项目", "什么游戏", "所属", "属于", "项目"], "项目/部门所属 项目所属 所属项目 游戏 产品 需求基础信息 概域名"),
     (["目标用户", "用户", "谁"], "目标用户 用户人群 使用对象 角色"),
     (["解决", "问题", "痛点"], "背景 痛点 问题 目标 价值"),
     (["阶段", "计划", "排期", "时间"], "阶段 计划 排期 时间 里程碑 状态"),
@@ -50,6 +51,7 @@ def rerank_hits(
             [
                 str(metadata.get("title", "")),
                 str(metadata.get("chunk_header", "")),
+                format_field_facts(metadata.get("field_facts", []) or []),
                 " ".join(metadata.get("generated_questions", []) or []),
                 str(metadata.get("summary", "")),
                 str(item.get("content", "")),
@@ -94,6 +96,7 @@ def keyword_recall_hits(query: str, chunks: List[Dict[str, object]], limit: int 
             [
                 str(metadata.get("title", "")),
                 str(metadata.get("chunk_header", "")),
+                format_field_facts(metadata.get("field_facts", []) or []),
                 " ".join(metadata.get("generated_questions", []) or []),
                 str(metadata.get("summary", "")),
                 str(chunk.get("content", "")),
@@ -187,3 +190,10 @@ def normalize_text(text: str) -> str:
 def split_sentences(text: str) -> List[str]:
     parts = re.split(r"(?<=[。！？!?；;])", text)
     return [part.strip() for part in parts if part.strip()]
+
+
+def format_field_facts(field_facts: List[Dict[str, str]]) -> str:
+    return " ".join(
+        "%s %s" % (fact.get("label", ""), fact.get("value", ""))
+        for fact in field_facts
+    )

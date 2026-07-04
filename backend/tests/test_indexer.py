@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.db import DocumentRepository
 from app.embeddings import HashEmbeddingProvider
-from app.indexer import Indexer
+from app.indexer import Indexer, is_indexable_document
 from app.vector_store import VectorStore, cosine_similarity
 
 
@@ -42,6 +42,12 @@ def test_indexer_skips_unchanged_files(tmp_path: Path):
     assert len(first["indexed"]) == 1
     assert len(second["skipped"]) == 1
     assert second["skipped"][0]["reason"] == "unchanged"
+
+
+def test_indexer_ignores_office_temporary_files():
+    assert not is_indexable_document(Path("~$需求文档.docx"))
+    assert not is_indexable_document(Path("~$进度计划.xlsx"))
+    assert is_indexable_document(Path("需求文档.docx"))
 
 
 def test_vector_store_returns_most_similar_chunk(tmp_path: Path):

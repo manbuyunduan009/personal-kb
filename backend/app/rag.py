@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from openai import OpenAI, OpenAIError
 
 from .embeddings import EmbeddingProvider
-from .retrieval import compress_context, keyword_recall_hits, query_variants, rerank_hits
+from .retrieval import compress_context, format_field_facts, keyword_recall_hits, query_variants, rerank_hits
 from .vector_store import VectorStore
 
 
@@ -11,6 +11,37 @@ INSUFFICIENT_EVIDENCE_MESSAGE = (
     "文档中没有找到依据。当前检索结果相关度低于证据阈值，"
     "已停止调用 AI 生成回答。"
 )
+FIELD_LOOKUP_MARKERS = [
+    "哪个",
+    "哪些",
+    "什么",
+    "多少",
+    "谁",
+    "何时",
+    "什么时候",
+    "日期",
+    "时间",
+    "属于",
+    "所属",
+    "负责人",
+    "对接人",
+    "联系人",
+    "项目",
+    "部门",
+    "游戏",
+    "产品",
+    "域名",
+    "编号",
+    "单号",
+    "基础信息",
+]
+FIELD_EVIDENCE_GROUPS = [
+    (["项目", "所属", "部门", "游戏", "产品"], ["项目", "所属", "属于", "部门", "游戏", "产品", "哪个", "什么"]),
+    (["对接人", "负责人", "联系人"], ["谁", "对接人", "负责人", "联系人"]),
+    (["日期", "时间", "排期", "完成"], ["何时", "什么时候", "日期", "时间", "排期", "完成"]),
+    (["域名", "网址", "链接"], ["域名", "网址", "链接"]),
+    (["编号", "单号", "worktile"], ["编号", "单号", "worktile"]),
+]
 
 
 class RagService:
@@ -81,7 +112,7 @@ class RagService:
 
     def answer(self, question: str) -> Dict[str, object]:
         hits = self.search(question, limit=5)
-        evidence_hits = self._evidence_hits(hits)
+        evidence_hits = self._evidence_hits(question, hits)
         citations = [self._citation_from_hit(hit) for hit in evidence_hits]
 
         if not evidence_hits:
@@ -140,12 +171,44 @@ class RagService:
             "citations": citations,
         }
 
-    def _evidence_hits(self, hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
+    def _evidence_hits(self, question: str, hits: List[Dict[str, object]]) -> List[Dict[str, object]]:
         return [
             hit
             for hit in hits
             if float(hit.get("score", 0.0)) >= self.min_evidence_score
+            or self._has_structured_field_evidence(question, hit)
         ]
+
+    def _has_structured_field_evidence(self, question: str, hit: Dict[str, object]) -> bool:
+        if not self._is_field_lookup_question(question):
+            return False
+
+        if float(hit.get("score", 0.0)) < self.min_evidence_score * 0.45:
+            return False
+
+        metadata = hit.get("metadata", {})
+        field_facts = metadata.get("field_facts", []) or []
+        for fact in field_facts:
+            label = str(fact.get("label", ""))
+            value = str(fact.get("value", "")).strip()
+            if value and self._field_label_answers_question(question, label):
+                return True
+        return False
+
+    @staticmethod
+    def _is_field_lookup_question(question: str) -> bool:
+        return any(marker in question for marker in FIELD_LOOKUP_MARKERS)
+
+    @staticmethod
+    def _field_label_answers_question(question: str, label: str) -> bool:
+        question_lower = question.lower()
+        label_lower = label.lower()
+        for label_markers, question_markers in FIELD_EVIDENCE_GROUPS:
+            if any(marker.lower() in label_lower for marker in label_markers) and any(
+                marker.lower() in question_lower for marker in question_markers
+            ):
+                return True
+        return False
 
     @staticmethod
     def _citation_from_hit(hit: Dict[str, object]) -> Dict[str, object]:
@@ -165,6 +228,9 @@ class RagService:
     def _context_from_hit(question: str, hit: Dict[str, object]) -> str:
         metadata = hit["metadata"]
         parts = []
+        field_facts = metadata.get("field_facts", []) or []
+        if field_facts:
+            parts.append("文档属性：%s" % format_field_facts(field_facts))
         if metadata.get("previous_context"):
             parts.append("上文窗口：%s" % metadata["previous_context"])
         parts.append("命中片段：%s" % hit["content"])

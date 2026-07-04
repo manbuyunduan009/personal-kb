@@ -11,7 +11,7 @@ from .parsers import SUPPORTED_EXTENSIONS, parse_document
 from .vector_store import VectorStore
 
 
-INDEX_SCHEMA_VERSION = "rag-optimization-v1"
+INDEX_SCHEMA_VERSION = "rag-optimization-v3"
 
 
 def file_hash(path: Path) -> str:
@@ -45,7 +45,7 @@ class Indexer:
 
         files = []
         for path in self.docs_root.rglob("*"):
-            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
+            if path.is_file() and is_indexable_document(path):
                 files.append(path)
         return sorted(files)
 
@@ -86,6 +86,9 @@ class Indexer:
                     chunk_metadatas=[
                         {
                             "chunk_header": record["chunk_header"],
+                            "document_facts": record["document_facts"],
+                            "chunk_facts": record["chunk_facts"],
+                            "field_facts": record["field_facts"],
                             "generated_questions": record["generated_questions"],
                             "previous_context": record["previous_context"],
                             "next_context": record["next_context"],
@@ -119,3 +122,9 @@ class Indexer:
             "skipped": skipped,
             "failed": failed,
         }
+
+
+def is_indexable_document(path: Path) -> bool:
+    if path.name.startswith("~$"):
+        return False
+    return path.suffix.lower() in SUPPORTED_EXTENSIONS
