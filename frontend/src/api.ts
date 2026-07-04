@@ -112,6 +112,45 @@ export type RagTrace = {
   created_at: string;
 };
 
+export type RequirementVersion = {
+  document_id: string;
+  title: string;
+  source_path: string;
+  file_type: string;
+  last_modified: number;
+  indexed_at: string;
+  version_label: string;
+  is_latest: boolean;
+};
+
+export type RequirementGroup = {
+  requirement_key: string;
+  requirement_title: string;
+  project_name: string;
+  document_count: number;
+  latest_document: RequirementVersion | null;
+  versions: RequirementVersion[];
+  confidence: number;
+  signals: string[];
+};
+
+export type ChangeAnalysis = {
+  old_document: { id: string; title: string; source_path: string; file_type: string };
+  new_document: { id: string; title: string; source_path: string; file_type: string };
+  summary: string;
+  added: string[];
+  removed: string[];
+  field_changes: Array<{
+    label: string;
+    old_value: string;
+    new_value: string;
+    change_type: "added" | "removed" | "modified" | string;
+  }>;
+  impact_modules: Array<{ label: string; matched_keywords: string[] }>;
+  open_questions: string[];
+  limitations: string[];
+};
+
 export type IndexResult = {
   docs_root: string;
   indexed: Array<{ path: string; chunks: number }>;
@@ -145,6 +184,17 @@ export function getDocuments() {
 
 export function getTraces(limit = 12) {
   return request<{ traces: RagTrace[] }>(`/api/traces?limit=${limit}`);
+}
+
+export function getProductRequirements() {
+  return request<{ requirements: RequirementGroup[] }>("/api/product/requirements");
+}
+
+export function analyzeChange(oldDocumentId: string, newDocumentId: string) {
+  return request<ChangeAnalysis>("/api/product/change-analysis", {
+    method: "POST",
+    body: JSON.stringify({ old_document_id: oldDocumentId, new_document_id: newDocumentId })
+  });
 }
 
 export function search(query: string, limit = 5) {

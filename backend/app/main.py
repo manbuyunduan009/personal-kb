@@ -7,8 +7,9 @@ from .config import get_settings
 from .db import DocumentRepository
 from .embeddings import create_embedding_provider
 from .indexer import Indexer
+from .product_expert import analyze_requirement_change, group_documents_by_requirement
 from .rag import RagService
-from .schemas import ChatRequest, FeedbackRequest, SearchRequest
+from .schemas import ChangeAnalysisRequest, ChatRequest, FeedbackRequest, SearchRequest
 from .vector_store import VectorStore
 
 
@@ -160,3 +161,21 @@ def feedback_summary():
 def list_rag_traces(limit: int = Query(default=20, ge=1, le=100)):
     _, repository = repository_service()
     return {"traces": repository.list_rag_traces(limit=limit)}
+
+
+@app.get("/api/product/requirements")
+def list_product_requirements():
+    _, repository = repository_service()
+    return {"requirements": group_documents_by_requirement(repository.list_documents())}
+
+
+@app.post("/api/product/change-analysis")
+def analyze_product_change(request: ChangeAnalysisRequest):
+    _, repository = repository_service()
+    old_document = repository.get_document(request.old_document_id)
+    new_document = repository.get_document(request.new_document_id)
+    if old_document is None:
+        raise HTTPException(status_code=404, detail="Old document not found")
+    if new_document is None:
+        raise HTTPException(status_code=404, detail="New document not found")
+    return analyze_requirement_change(old_document, new_document)

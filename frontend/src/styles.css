@@ -248,6 +248,7 @@ h3 {
 .citation-check,
 .citations,
 .preview,
+.product-expert-panel,
 .trace-panel,
 .hit {
   margin-top: 16px;
@@ -468,6 +469,106 @@ h3 {
   background: #ebe3d2;
   color: #4a4840;
   font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.requirement-list {
+  display: grid;
+  gap: 10px;
+}
+
+.requirement-item {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(32, 33, 29, 0.22);
+  background: #f8f5ec;
+}
+
+.requirement-item header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.requirement-item header b {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.requirement-item header span {
+  min-width: 44px;
+  padding: 3px 6px;
+  border: 1px solid rgba(32, 33, 29, 0.35);
+  text-align: center;
+  font-size: 12px;
+}
+
+.requirement-item small {
+  color: #6b665d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.requirement-item button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.version-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.version-tags span {
+  max-width: 100%;
+  padding: 4px 6px;
+  border: 1px solid rgba(32, 33, 29, 0.2);
+  background: #ebe3d2;
+  color: #4a4840;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.change-analysis {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(32, 33, 29, 0.18);
+}
+
+.change-analysis p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.change-list,
+.field-change-list {
+  display: grid;
+  gap: 6px;
+}
+
+.change-list b {
+  font-size: 12px;
+}
+
+.change-list span,
+.field-change-list span {
+  padding: 7px 8px;
+  border: 1px solid rgba(32, 33, 29, 0.18);
+  background: rgba(235, 227, 210, 0.55);
+  color: #4a4840;
+  font-size: 12px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 

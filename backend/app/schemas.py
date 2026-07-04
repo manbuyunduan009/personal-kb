@@ -43,3 +43,8 @@ class FeedbackRequest(BaseModel):
     chunk_header: str = ""
     rating: Literal[-1, 1]
     note: str = Field(default="", max_length=500)
+
+
+class ChangeAnalysisRequest(BaseModel):
+    old_document_id: str = Field(min_length=1)
+    new_document_id: str = Field(min_length=1)

@@ -20,6 +20,7 @@ personal-kb
 │  │  ├─ indexer.py       # 扫描 docs 并入库
 │  │  ├─ vector_store.py  # 本地 SQLite 向量库 + FTS/BM25 关键词库
 │  │  ├─ query_rewrite.py # LLM 检索问题改写
+│  │  ├─ product_expert.py # 需求分组、版本管理、变更分析
 │  │  └─ rag.py           # 检索 + AI 问答
 │  └─ tests
 └─ frontend
@@ -35,6 +36,8 @@ personal-kb
 - [RAG 质量说明](docs/RAG_QUALITY.md)：为什么 RAG 容易效果不好，以及本项目的质量路线。
 - [RAG 优化计划](docs/RAG_OPTIMIZATION_PLAN.md)：根据截图整理的 Small-to-Big、Chunk Header、Query Transformation、Rerank、反馈闭环等优化路线。
 - [RAG 工业版 Playbook](docs/RAG_INDUSTRIAL_PLAYBOOK.md)：记录每批优化的顺序、原因、规则、测试结果和下一步。
+- [产品专家路线图](docs/PRODUCT_EXPERT_ROADMAP.md)：把问答工具升级成历史需求、变更分析和方案建议助手的长期计划。
+- [今晚开发目标](docs/NIGHTLY_DEVELOPMENT_TARGET.md)：明天验收用的产品专家 v0.1 目标和验收清单。
 
 ## 后端启动
 

@@ -15,16 +15,20 @@ import {
   ThumbsUp
 } from "lucide-react";
 import {
+  analyzeChange,
   chat,
+  ChangeAnalysis,
   Citation,
   CitationCheck,
   DocumentItem,
   getDocuments,
   getHealth,
+  getProductRequirements,
   getTraces,
   Health,
   IndexResult,
   RagTrace,
+  RequirementGroup,
   runIndex,
   search,
   SearchHit,
@@ -52,13 +56,16 @@ function App() {
   const [citationCheck, setCitationCheck] = useState<CitationCheck | null>(null);
   const [results, setResults] = useState<SearchHit[]>([]);
   const [traces, setTraces] = useState<RagTrace[]>([]);
+  const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
+  const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [loading, setLoading] = useState<"index" | "search" | "chat" | "boot" | "">("boot");
+  const [loading, setLoading] = useState<"index" | "search" | "chat" | "product" | "boot" | "">("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
   const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackLoadingKey, setFeedbackLoadingKey] = useState("");
+  const [productMessage, setProductMessage] = useState("");
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === selectedId) || documents[0],
@@ -66,10 +73,16 @@ function App() {
   );
 
   async function refresh() {
-    const [healthData, documentData, traceData] = await Promise.all([getHealth(), getDocuments(), getTraces()]);
+    const [healthData, documentData, traceData, requirementData] = await Promise.all([
+      getHealth(),
+      getDocuments(),
+      getTraces(),
+      getProductRequirements()
+    ]);
     setHealth(healthData);
     setDocuments(documentData.documents);
     setTraces(traceData.traces);
+    setRequirements(requirementData.requirements);
     if (!selectedId && documentData.documents[0]) {
       setSelectedId(documentData.documents[0].id);
     }
@@ -162,6 +175,28 @@ function App() {
       setError((err as Error).message);
     } finally {
       setFeedbackLoadingKey("");
+    }
+  }
+
+  async function handleAnalyzeRequirement(group: RequirementGroup) {
+    setProductMessage("");
+    setChangeAnalysis(null);
+    if (group.versions.length < 2) {
+      setProductMessage("这个需求当前只有 1 个版本，明天换办公资料后可用两个版本做变更分析。");
+      return;
+    }
+
+    const [latest, previous] = group.versions;
+    setLoading("product");
+    setError("");
+    try {
+      const result = await analyzeChange(previous.document_id, latest.document_id);
+      setChangeAnalysis(result);
+      setProductMessage(`已分析：${group.requirement_title} 的最新两个版本。`);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading("");
     }
   }
 
@@ -403,6 +438,68 @@ function App() {
             </section>
           )}
 
+          <section className="product-expert-panel">
+            <h3>产品专家</h3>
+            {requirements.length === 0 && <p className="empty">索引文档后会在这里识别需求分组。</p>}
+            {productMessage && <p className="diagnostic-note">{productMessage}</p>}
+            <div className="requirement-list">
+              {requirements.slice(0, 5).map((group) => (
+                <article className="requirement-item" key={group.requirement_key}>
+                  <header>
+                    <b>{group.requirement_title}</b>
+                    <span>{group.document_count} 版</span>
+                  </header>
+                  <small>
+                    {group.project_name} · 置信度 {Math.round(group.confidence * 100)}%
+                  </small>
+                  {group.latest_document && (
+                    <small>
+                      最新：{group.latest_document.version_label} · {shortPath(group.latest_document.source_path)}
+                    </small>
+                  )}
+                  <div className="version-tags">
+                    {group.versions.slice(0, 4).map((version) => (
+                      <span key={`${group.requirement_key}-${version.document_id}`}>
+                        {version.is_latest ? "最新 " : ""}
+                        {version.version_label}
+                      </span>
+                    ))}
+                  </div>
+                  <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
+                    {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
+                    分析最新变化
+                  </button>
+                </article>
+              ))}
+            </div>
+
+            {changeAnalysis && (
+              <article className="change-analysis">
+                <h3>变更分析</h3>
+                <p>{changeAnalysis.summary}</p>
+                {changeAnalysis.impact_modules.length > 0 && (
+                  <div className="keyword-tags">
+                    {changeAnalysis.impact_modules.map((module) => (
+                      <span key={module.label}>{module.label}</span>
+                    ))}
+                  </div>
+                )}
+                <ChangeList title="新增" items={changeAnalysis.added} />
+                <ChangeList title="删除" items={changeAnalysis.removed} />
+                {changeAnalysis.field_changes.length > 0 && (
+                  <div className="field-change-list">
+                    {changeAnalysis.field_changes.slice(0, 6).map((change) => (
+                      <span key={`${change.label}-${change.old_value}-${change.new_value}`}>
+                        {change.label}: {change.old_value || "空"} → {change.new_value || "空"}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <ChangeList title="待确认" items={changeAnalysis.open_questions} />
+              </article>
+            )}
+          </section>
+
           <section className="trace-panel">
             <h3>RAG 诊断</h3>
             {traces.length === 0 && <p className="empty">还没有问答诊断记录。</p>}
@@ -517,6 +614,18 @@ function Status({ icon, label, value }: { icon: React.ReactNode; label: string; 
       {icon}
       <span>{label}</span>
       <b>{value}</b>
+    </div>
+  );
+}
+
+function ChangeList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="change-list">
+      <b>{title}</b>
+      {items.slice(0, 5).map((item) => (
+        <span key={`${title}-${item}`}>{item}</span>
+      ))}
     </div>
   );
 }
