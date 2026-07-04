@@ -8,6 +8,15 @@ def test_query_variants_expand_requirement_question():
     assert any("模块" in variant for variant in variants)
 
 
+def test_query_variants_expand_carrier_concept_question():
+    variants = query_variants("游园会的载体是啥")
+    combined = " ".join(variants)
+
+    assert "小程序" in combined
+    assert "移动端" in combined
+    assert "承载形式" in combined
+
+
 def test_rerank_uses_keyword_overlap():
     hits = [
         {

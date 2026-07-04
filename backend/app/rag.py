@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Optional, Tuple
 
 from openai import OpenAI, OpenAIError
@@ -36,6 +37,12 @@ FIELD_LOOKUP_MARKERS = [
     "编号",
     "单号",
     "基础信息",
+    "载体",
+    "承载",
+    "形式",
+    "平台",
+    "终端",
+    "端上",
 ]
 FIELD_EVIDENCE_GROUPS = [
     (["项目", "所属", "部门", "游戏", "产品"], ["项目", "所属", "属于", "部门", "游戏", "产品", "哪个", "什么"]),
@@ -43,6 +50,16 @@ FIELD_EVIDENCE_GROUPS = [
     (["日期", "时间", "排期", "完成"], ["何时", "什么时候", "日期", "时间", "排期", "完成"]),
     (["域名", "网址", "链接"], ["域名", "网址", "链接"]),
     (["编号", "单号", "worktile"], ["编号", "单号", "worktile"]),
+    (
+        ["载体", "承载", "形式", "平台", "终端", "小程序", "移动端", "h5", "app", "端"],
+        ["载体", "承载", "形式", "平台", "终端", "端上", "小程序", "移动端", "什么", "哪个"],
+    ),
+]
+CONCEPT_EVIDENCE_GROUPS = [
+    (
+        ["载体", "承载", "形式", "平台", "终端", "端上"],
+        ["小程序", "移动端", "h5", "H5", "网页", "web", "PC", "App", "APP", "微信小程序", "端"],
+    ),
 ]
 CHILD_CONTEXT_MAX_CHARS = 900
 PARENT_CONTEXT_MAX_CHARS = 1200
@@ -378,6 +395,7 @@ class RagService:
             for hit in hits
             if float(hit.get("score", 0.0)) >= self.min_evidence_score
             or self._has_structured_field_evidence(question, hit)
+            or self._has_concept_evidence(question, hit)
         ]
 
     def _has_structured_field_evidence(self, question: str, hit: Dict[str, object]) -> bool:
@@ -393,6 +411,49 @@ class RagService:
             label = str(fact.get("label", ""))
             value = str(fact.get("value", "")).strip()
             if value and self._field_label_answers_question(question, label):
+                return True
+        return False
+
+    def _has_concept_evidence(self, question: str, hit: Dict[str, object]) -> bool:
+        if float(hit.get("score", 0.0)) < self.min_evidence_score * 0.75:
+            return False
+
+        metadata = hit.get("metadata", {})
+        haystack = "\n".join(
+            [
+                str(metadata.get("title", "")),
+                str(metadata.get("chunk_header", "")),
+                format_field_facts(metadata.get("field_facts", []) or []),
+                " ".join(metadata.get("generated_questions", []) or []),
+                str(metadata.get("summary", "")),
+                str(metadata.get("parent_context", "")),
+                str(hit.get("content", "")),
+            ]
+        )
+        haystack_lower = haystack.lower()
+        for question_markers, evidence_markers in CONCEPT_EVIDENCE_GROUPS:
+            if not any(marker in question for marker in question_markers):
+                continue
+            if not any(marker.lower() in haystack_lower for marker in evidence_markers):
+                continue
+            if self._has_question_anchor_overlap(question, haystack, question_markers):
+                return True
+        return False
+
+    @staticmethod
+    def _has_question_anchor_overlap(question: str, text: str, concept_markers: List[str]) -> bool:
+        stripped = question
+        for marker in concept_markers + ["什么", "哪个", "哪些", "是", "的", "啥", "吗", "呢", "这个", "那个", "请问"]:
+            stripped = stripped.replace(marker, " ")
+        anchors = []
+        anchors.extend(token for token in re.findall(r"[\u4e00-\u9fff]{2,}", stripped) if len(token) >= 2)
+        anchors.extend(token.lower() for token in re.findall(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{1,}", stripped))
+        if not anchors:
+            return False
+        normalized_text = re.sub(r"[\s\W_]+", "", text.lower(), flags=re.UNICODE)
+        for anchor in anchors:
+            normalized_anchor = re.sub(r"[\s\W_]+", "", anchor.lower(), flags=re.UNICODE)
+            if normalized_anchor and normalized_anchor in normalized_text:
                 return True
         return False
 

@@ -194,6 +194,34 @@ def test_answer_uses_structured_fields_for_field_lookup_questions_without_api_ke
     assert result["citation_check"]["status"] == "not_applicable"
 
 
+def test_answer_uses_concept_evidence_for_carrier_questions_without_api_key():
+    hit = make_hit(
+        0.28,
+        content="游园会活动将在移动端小程序中承载，玩家可通过小程序参与活动。",
+        metadata={
+            "title": "游园会活动需求.docx",
+            "source_path": "游园会.docx",
+            "chunk_header": "活动形式",
+            "summary": "游园会移动端小程序活动形式",
+        },
+    )
+    service = RagService(
+        embeddings=FakeEmbeddings(),
+        vector_store=FakeVectorStore([hit]),
+        openai_api_key="",
+        openai_base_url="https://example.com/v1",
+        openai_model="test-model",
+        min_evidence_score=0.3,
+    )
+
+    result = service.answer("游园会的载体是啥")
+
+    assert "OPENAI_API_KEY" in result["answer"]
+    assert len(result["citations"]) == 1
+    assert result["citations"][0]["title"] == "游园会活动需求.docx"
+    assert result["self_rag"]["status"] == "sufficient"
+
+
 def test_structured_fields_do_not_unlock_unrelated_low_score_questions():
     hit = make_hit(
         0.1,
