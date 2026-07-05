@@ -127,13 +127,13 @@
         min-height: 700px;
       }
 
-      .inputs,
+      .folder,
       .workbench,
       .diagnosis {
         padding: 18px;
       }
 
-      .inputs,
+      .folder,
       .workbench {
         border-right: 2px solid var(--ink);
       }
@@ -145,28 +145,24 @@
         font-weight: 900;
       }
 
-      .stack {
-        display: grid;
-        gap: 10px;
-      }
-
-      .input-type,
-      .source-card,
-      .step,
-      .output-card,
+      .path-box,
+      .folder-summary,
+      .tree,
+      .task-box,
+      .work-canvas,
+      .output-area,
       .diagnostic-card {
         border: 1.5px solid var(--line);
         background: #fbf5e9;
       }
 
-      .input-type {
+      .path-box {
         padding: 12px;
+        word-break: break-all;
       }
 
-      .input-type strong,
-      .source-card strong,
-      .step strong,
-      .output-card strong,
+      .path-box strong,
+      .folder-summary strong,
       .diagnostic-card strong {
         display: block;
         margin-bottom: 6px;
@@ -174,34 +170,55 @@
       }
 
       .hint,
-      .meta {
+      .meta,
+      .file-meta {
         color: var(--muted);
         font-size: 13px;
         line-height: 1.55;
       }
 
-      .paste-box {
-        min-height: 42px;
-        display: flex;
-        align-items: center;
-        margin-top: 8px;
-        padding: 0 10px;
-        border: 1.5px dashed var(--line);
-        color: var(--muted);
-        font-size: 13px;
-        background: #fffdf6;
-      }
-
-      .material-list {
-        margin-top: 18px;
-      }
-
-      .source-card {
+      .folder-summary {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 10px;
         padding: 12px;
       }
 
+      .tree {
+        margin-top: 12px;
+        padding: 8px 0;
+      }
+
+      .tree-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 34px;
+        padding: 0 12px;
+        border-bottom: 1px solid rgba(200, 192, 174, 0.7);
+        font-size: 14px;
+      }
+
+      .tree-row:last-child {
+        border-bottom: 0;
+      }
+
+      .tree-row.folder-row {
+        font-weight: 800;
+      }
+
+      .tree-row.child {
+        padding-left: 28px;
+      }
+
+      .file-type {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       .task-box {
-        border: 2px solid var(--ink);
+        border-color: var(--ink);
         background: #fffdf6;
       }
 
@@ -221,35 +238,32 @@
         line-height: 1.6;
       }
 
-      .canvas {
-        padding: 18px;
+      .work-canvas {
+        min-height: 250px;
+        margin-top: 16px;
+        padding: 20px;
+        background: #fffdf6;
       }
 
-      .canvas h2 {
+      .work-canvas h2 {
         margin-bottom: 10px;
         font-size: 24px;
       }
 
-      .process {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
+      .canvas-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 150px;
         margin-top: 18px;
-      }
-
-      .step {
-        min-height: 118px;
-        padding: 14px;
-      }
-
-      .step.active {
-        border-color: var(--accent);
-        background: #eef5ef;
+        border: 1.5px dashed var(--line);
+        color: var(--muted);
+        text-align: center;
       }
 
       .output-area {
         margin-top: 16px;
-        border: 2px solid var(--ink);
+        border-color: var(--ink);
         background: #fffdf6;
       }
 
@@ -262,21 +276,30 @@
         border-bottom: 1.5px solid var(--line);
       }
 
-      .output-grid {
-        display: grid;
-        grid-template-columns: 1.2fr 1fr;
-        gap: 10px;
-        padding: 14px;
+      .output-body {
+        min-height: 190px;
+        padding: 18px;
       }
 
-      .output-card {
+      .output-body h2 {
+        margin-bottom: 10px;
+        font-size: 22px;
+      }
+
+      .output-placeholder {
         min-height: 110px;
-        padding: 14px;
+        margin-top: 14px;
+        border: 1.5px dashed var(--line);
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
       }
 
-      .output-card.primary-output {
-        border-color: var(--accent);
-        background: #eef5ef;
+      .stack {
+        display: grid;
+        gap: 10px;
       }
 
       .diagnostic-card {
@@ -316,13 +339,11 @@
       @media (max-width: 1180px) {
         .product-layout,
         .topbar,
-        .output-grid,
-        .process,
         .principles {
           grid-template-columns: 1fr;
         }
 
-        .inputs,
+        .folder,
         .workbench {
           border-right: 0;
           border-bottom: 2px solid var(--ink);
@@ -344,7 +365,8 @@
           flex-direction: column;
         }
 
-        .task-row {
+        .task-row,
+        .folder-summary {
           grid-template-columns: 1fr;
         }
       }
@@ -355,9 +377,9 @@
       <header class="header">
         <div>
           <h1>Personal KB：产品专家工作台</h1>
-          <p class="subtitle">问答负责查事实，产品专家负责把文件夹、图片、链接和文字材料组织成可执行的产品判断。</p>
+          <p class="subtitle">左侧只显示当前打开文件夹的资料，中间处理产品任务，下方沉淀输出，右侧解释来源与问题。</p>
         </div>
-        <div class="badge">方案 A / 产品专家模式</div>
+        <div class="badge">方案 A / 极简工作台</div>
       </header>
 
       <section class="wireframe">
@@ -368,53 +390,38 @@
             <div class="mode active">产品专家</div>
           </nav>
           <div class="actions">
-            <div class="button">索引资料</div>
+            <div class="button">打开文件夹</div>
             <div class="button primary">生成方案</div>
           </div>
         </div>
 
         <div class="product-layout">
-          <aside class="inputs">
-            <div class="section-title">输入材料</div>
-            <div class="stack">
-              <article class="input-type">
-                <strong>文件夹地址</strong>
-                <p class="hint">粘贴本地项目资料目录。</p>
-                <div class="paste-box">D:\项目\周年庆\需求资料</div>
-              </article>
-              <article class="input-type">
-                <strong>图片</strong>
-                <p class="hint">截图、流程图、评审图。</p>
-                <div class="paste-box">拖入或粘贴图片</div>
-              </article>
-              <article class="input-type">
-                <strong>链接</strong>
-                <p class="hint">需求地址、页面、竞品资料。</p>
-                <div class="paste-box">https://...</div>
-              </article>
-              <article class="input-type">
-                <strong>文字说明</strong>
-                <p class="hint">补充背景、目标、约束。</p>
-                <div class="paste-box">输入临时上下文</div>
-              </article>
+          <aside class="folder">
+            <div class="section-title">打开的文件夹</div>
+            <div class="path-box">
+              <strong>D:\项目\周年庆\需求资料</strong>
+              <p class="meta">显示这个文件夹里有哪些内容。</p>
             </div>
-
-            <div class="material-list">
-              <div class="section-title">已加入</div>
-              <div class="stack">
-                <article class="source-card">
-                  <strong>周年庆 PRD.docx</strong>
-                  <p class="meta">需求背景 / 规则 / 排期</p>
-                </article>
-                <article class="source-card">
-                  <strong>流程截图.png</strong>
-                  <p class="meta">待识别关键页面</p>
-                </article>
-                <article class="source-card">
-                  <strong>评审链接</strong>
-                  <p class="meta">待抓取或手动摘要</p>
-                </article>
+            <div class="folder-summary">
+              <div>
+                <strong>8</strong>
+                <p class="file-meta">文件</p>
               </div>
+              <div>
+                <strong>3</strong>
+                <p class="file-meta">文件夹</p>
+              </div>
+            </div>
+            <div class="tree">
+              <div class="tree-row folder-row"><span>docs</span><span class="file-type">folder</span></div>
+              <div class="tree-row child"><span>周年庆 PRD.docx</span><span class="file-type">docx</span></div>
+              <div class="tree-row child"><span>专题进度计划.xlsx</span><span class="file-type">xlsx</span></div>
+              <div class="tree-row child"><span>验收助手.md</span><span class="file-type">md</span></div>
+              <div class="tree-row folder-row"><span>images</span><span class="file-type">folder</span></div>
+              <div class="tree-row child"><span>流程截图.png</span><span class="file-type">png</span></div>
+              <div class="tree-row child"><span>评审截图.jpg</span><span class="file-type">jpg</span></div>
+              <div class="tree-row folder-row"><span>links</span><span class="file-type">folder</span></div>
+              <div class="tree-row child"><span>评审链接.txt</span><span class="file-type">txt</span></div>
             </div>
           </aside>
 
@@ -422,27 +429,15 @@
             <div class="section-title">工作台</div>
             <div class="task-box">
               <div class="task-row">
-                <div class="fake-textarea">输入产品任务：根据这些资料，判断这次游园会应该怎么做，和历史方案相比有哪些变化？</div>
+                <div class="fake-textarea">输入产品任务：根据当前文件夹里的资料，判断这次游园会应该怎么做，和历史方案相比有哪些变化？</div>
                 <div class="button primary">运行</div>
               </div>
-              <div class="canvas">
-                <h2>分析过程</h2>
-                <p class="hint">先整理输入材料，再找历史依据，最后生成可评审的产品输出。</p>
-                <div class="process">
-                  <article class="step active">
-                    <strong>1. 整理材料</strong>
-                    <p class="hint">识别文件夹、图片、链接、文字分别提供了什么信息。</p>
-                  </article>
-                  <article class="step">
-                    <strong>2. 匹配历史</strong>
-                    <p class="hint">找相似需求、历史变更和可复用规则。</p>
-                  </article>
-                  <article class="step">
-                    <strong>3. 形成判断</strong>
-                    <p class="hint">输出方案、风险、待确认问题和验收重点。</p>
-                  </article>
-                </div>
-              </div>
+            </div>
+
+            <div class="work-canvas">
+              <h2>工作区</h2>
+              <p class="hint">这里用于展示 AI 正在处理的任务、当前选中的资料和必要的中间结论。</p>
+              <div class="canvas-empty">运行后显示材料整理、历史匹配和判断过程。</div>
             </div>
 
             <div class="output-area">
@@ -450,23 +445,10 @@
                 <strong>输出结果</strong>
                 <span class="meta">可复制 / 可继续追问 / 可生成清单</span>
               </div>
-              <div class="output-grid">
-                <article class="output-card primary-output">
-                  <strong>推荐方案</strong>
-                  <p class="hint">本次需求建议采用的产品方案、关键取舍和原因。</p>
-                </article>
-                <article class="output-card">
-                  <strong>待确认问题</strong>
-                  <p class="hint">资料里没说清楚、需要找产品或研发确认的点。</p>
-                </article>
-                <article class="output-card">
-                  <strong>历史变化</strong>
-                  <p class="hint">和历史需求相比，新增、删除、调整了什么。</p>
-                </article>
-                <article class="output-card">
-                  <strong>验收重点</strong>
-                  <p class="hint">测试、运营、研发需要重点关注的场景。</p>
-                </article>
+              <div class="output-body">
+                <h2>产品方案草稿</h2>
+                <p class="hint">最终结果集中显示在这里，不再拆成一堆卡片。</p>
+                <div class="output-placeholder">运行后生成一份集中的产品方案草稿。</div>
               </div>
             </div>
           </section>
@@ -476,12 +458,12 @@
             <div class="stack">
               <article class="diagnostic-card">
                 <strong>资料覆盖</strong>
-                <p class="meta">PRD、截图、链接、补充说明是否都被读取。</p>
+                <p class="meta">当前文件夹里的文档、图片、链接是否被读取。</p>
                 <div class="mini-bar"></div>
               </article>
               <article class="diagnostic-card">
                 <strong>引用来源</strong>
-                <p class="meta">每条结论对应哪些文件、图片或链接。</p>
+                <p class="meta">每条结论对应哪些文件或片段。</p>
               </article>
               <article class="diagnostic-card warn">
                 <strong>当前问题</strong>
@@ -498,16 +480,16 @@
 
       <section class="principles">
         <article class="principle">
-          <strong>左侧是输入</strong>
-          <p class="hint">像 Codex 一样，把所有资料先放进任务上下文。</p>
+          <strong>左侧只看文件夹</strong>
+          <p class="hint">不展示复杂入口，只显示打开目录里有哪些资料。</p>
         </article>
         <article class="principle">
-          <strong>中间是工作台</strong>
-          <p class="hint">展示 AI 正在如何整理、匹配、判断。</p>
+          <strong>中间处理任务</strong>
+          <p class="hint">用户只关心让 AI 做什么，以及当前正在处理什么。</p>
         </article>
         <article class="principle">
-          <strong>下方是输出</strong>
-          <p class="hint">最终沉淀方案、变化、风险和验收重点。</p>
+          <strong>下方集中输出</strong>
+          <p class="hint">结果用一块区域承载，避免卡片太多导致页面发散。</p>
         </article>
       </section>
     </main>
