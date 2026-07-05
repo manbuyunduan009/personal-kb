@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Personal KB 简洁工作台线稿</title>
+    <title>Personal KB 产品专家工作台线稿</title>
     <style>
       :root {
         --ink: #171814;
@@ -14,6 +14,7 @@
         --soft: #ece4d3;
         --active: #1f1f1b;
         --accent: #2f6f5d;
+        --warn: #8b5d2e;
       }
 
       * {
@@ -27,9 +28,16 @@
         font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
       }
 
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
       .page {
         min-height: 100vh;
-        padding: 32px;
+        padding: 28px;
       }
 
       .header {
@@ -37,15 +45,8 @@
         align-items: flex-end;
         justify-content: space-between;
         gap: 24px;
-        padding-bottom: 20px;
+        padding-bottom: 18px;
         border-bottom: 3px solid var(--ink);
-      }
-
-      h1,
-      h2,
-      h3,
-      p {
-        margin: 0;
       }
 
       h1 {
@@ -59,114 +60,119 @@
         font-size: 15px;
       }
 
-      .badge {
+      .badge,
+      .button,
+      .mode {
         border: 1.5px solid var(--ink);
-        padding: 10px 14px;
-        font-weight: 700;
         background: var(--panel);
+        font-weight: 800;
+      }
+
+      .badge {
+        padding: 10px 14px;
         white-space: nowrap;
       }
 
       .wireframe {
-        margin-top: 28px;
+        margin-top: 26px;
         border: 3px solid var(--ink);
         background: var(--panel);
         box-shadow: 8px 8px 0 rgba(23, 24, 20, 0.22);
       }
 
       .topbar {
-        display: flex;
+        display: grid;
+        grid-template-columns: 220px 1fr auto;
         align-items: center;
-        justify-content: space-between;
         gap: 16px;
-        min-height: 70px;
+        min-height: 68px;
         padding: 14px 18px;
         border-bottom: 2px solid var(--ink);
       }
 
       .brand {
         font-size: 20px;
-        font-weight: 800;
+        font-weight: 900;
       }
 
-      .modes {
+      .modes,
+      .actions {
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
       }
 
-      .mode {
-        border: 1.5px solid var(--ink);
-        padding: 10px 14px;
-        background: var(--panel);
-        font-weight: 700;
-      }
-
-      .mode.active {
-        background: var(--active);
-        color: #fffaf0;
+      .modes {
+        justify-content: center;
       }
 
       .actions {
-        display: flex;
-        gap: 8px;
+        justify-content: flex-end;
       }
 
+      .mode,
       .button {
-        border: 1.5px solid var(--ink);
         padding: 10px 14px;
-        background: var(--panel);
-        font-weight: 700;
       }
 
+      .mode.active,
       .button.primary {
         background: var(--active);
         color: #fffaf0;
       }
 
-      .workspace {
+      .product-layout {
         display: grid;
-        grid-template-columns: 240px minmax(420px, 1fr) 300px;
-        min-height: 610px;
+        grid-template-columns: 280px minmax(520px, 1fr) 300px;
+        min-height: 700px;
       }
 
-      .left,
-      .center,
-      .right {
+      .inputs,
+      .workbench,
+      .diagnosis {
         padding: 18px;
       }
 
-      .left,
-      .center {
+      .inputs,
+      .workbench {
         border-right: 2px solid var(--ink);
       }
 
       .section-title {
         margin-bottom: 12px;
-        font-size: 14px;
-        font-weight: 800;
         color: var(--muted);
+        font-size: 14px;
+        font-weight: 900;
       }
 
-      .doc-list {
+      .stack {
         display: grid;
         gap: 10px;
       }
 
-      .doc {
-        min-height: 58px;
+      .input-type,
+      .source-card,
+      .step,
+      .output-card,
+      .diagnostic-card {
         border: 1.5px solid var(--line);
-        padding: 12px;
         background: #fbf5e9;
       }
 
-      .doc strong {
+      .input-type {
+        padding: 12px;
+      }
+
+      .input-type strong,
+      .source-card strong,
+      .step strong,
+      .output-card strong,
+      .diagnostic-card strong {
         display: block;
         margin-bottom: 6px;
         font-size: 15px;
       }
 
-      .doc span,
       .hint,
       .meta {
         color: var(--muted);
@@ -174,12 +180,32 @@
         line-height: 1.55;
       }
 
-      .input-card {
+      .paste-box {
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        margin-top: 8px;
+        padding: 0 10px;
+        border: 1.5px dashed var(--line);
+        color: var(--muted);
+        font-size: 13px;
+        background: #fffdf6;
+      }
+
+      .material-list {
+        margin-top: 18px;
+      }
+
+      .source-card {
+        padding: 12px;
+      }
+
+      .task-box {
         border: 2px solid var(--ink);
         background: #fffdf6;
       }
 
-      .input-row {
+      .task-row {
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 12px;
@@ -187,123 +213,138 @@
         border-bottom: 1.5px solid var(--line);
       }
 
-      .fake-input {
-        min-height: 48px;
-        display: flex;
-        align-items: center;
-        padding: 0 14px;
+      .fake-textarea {
+        min-height: 84px;
+        padding: 12px;
         border: 1.5px solid var(--line);
         color: var(--muted);
+        line-height: 1.6;
       }
 
-      .result {
-        min-height: 250px;
-        padding: 20px;
+      .canvas {
+        padding: 18px;
       }
 
-      .result h2 {
-        margin-bottom: 12px;
+      .canvas h2 {
+        margin-bottom: 10px;
         font-size: 24px;
       }
 
-      .result p {
-        max-width: 760px;
-        line-height: 1.75;
-      }
-
-      .mode-preview {
+      .process {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
         margin-top: 18px;
       }
 
-      .preview-card {
-        min-height: 104px;
-        border: 1.5px solid var(--line);
+      .step {
+        min-height: 118px;
         padding: 14px;
-        background: var(--paper);
       }
 
-      .preview-card.active {
+      .step.active {
         border-color: var(--accent);
         background: #eef5ef;
       }
 
-      .preview-card h3 {
-        margin-bottom: 8px;
-        font-size: 16px;
+      .output-area {
+        margin-top: 16px;
+        border: 2px solid var(--ink);
+        background: #fffdf6;
       }
 
-      .evidence {
-        display: grid;
+      .output-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1.5px solid var(--line);
       }
 
-      .source {
-        border: 1.5px solid var(--line);
+      .output-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 10px;
         padding: 14px;
-        background: #fbf5e9;
       }
 
-      .source strong {
-        display: block;
-        margin-bottom: 8px;
+      .output-card {
+        min-height: 110px;
+        padding: 14px;
       }
 
-      .trace {
-        border: 1.5px solid var(--accent);
+      .output-card.primary-output {
+        border-color: var(--accent);
         background: #eef5ef;
       }
 
-      .simple-note {
-        margin-top: 20px;
+      .diagnostic-card {
+        padding: 14px;
+      }
+
+      .diagnostic-card.warn {
+        border-color: var(--warn);
+        background: #f7eddf;
+      }
+
+      .mini-bar {
+        height: 8px;
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        background: linear-gradient(90deg, var(--accent) 0 68%, transparent 68% 100%);
+      }
+
+      .principles {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
         gap: 12px;
+        margin-top: 20px;
       }
 
-      .note-box {
+      .principle {
         border: 1.5px solid var(--line);
         padding: 14px;
         background: rgba(255, 250, 240, 0.7);
       }
 
-      .note-box strong {
+      .principle strong {
         display: block;
         margin-bottom: 6px;
       }
 
-      @media (max-width: 1100px) {
-        .workspace {
+      @media (max-width: 1180px) {
+        .product-layout,
+        .topbar,
+        .output-grid,
+        .process,
+        .principles {
           grid-template-columns: 1fr;
         }
 
-        .left,
-        .center {
+        .inputs,
+        .workbench {
           border-right: 0;
           border-bottom: 2px solid var(--ink);
         }
 
-        .simple-note {
-          grid-template-columns: 1fr;
+        .modes,
+        .actions {
+          justify-content: flex-start;
         }
       }
 
-      @media (max-width: 760px) {
+      @media (max-width: 720px) {
         .page {
           padding: 18px;
         }
 
-        .header,
-        .topbar,
-        .input-row {
+        .header {
           align-items: stretch;
           flex-direction: column;
-          grid-template-columns: 1fr;
         }
 
-        .mode-preview {
+        .task-row {
           grid-template-columns: 1fr;
         }
       }
@@ -313,106 +354,160 @@
     <main class="page">
       <header class="header">
         <div>
-          <h1>Personal KB：简洁双模式工作台</h1>
-          <p class="subtitle">把“知识库问答”和“产品专家”分开，但共用同一套资料、引用和诊断。</p>
+          <h1>Personal KB：产品专家工作台</h1>
+          <p class="subtitle">问答负责查事实，产品专家负责把文件夹、图片、链接和文字材料组织成可执行的产品判断。</p>
         </div>
-        <div class="badge">方案 A / 简洁版</div>
+        <div class="badge">方案 A / 产品专家模式</div>
       </header>
 
       <section class="wireframe">
         <div class="topbar">
           <div class="brand">Personal KB</div>
           <nav class="modes" aria-label="工作模式">
-            <div class="mode active">知识库问答</div>
-            <div class="mode">产品专家</div>
+            <div class="mode">知识库问答</div>
+            <div class="mode active">产品专家</div>
           </nav>
           <div class="actions">
-            <div class="button">索引文档</div>
-            <div class="button primary">开始</div>
+            <div class="button">索引资料</div>
+            <div class="button primary">生成方案</div>
           </div>
         </div>
 
-        <div class="workspace">
-          <aside class="left">
-            <div class="section-title">资料范围</div>
-            <div class="doc-list">
-              <article class="doc">
-                <strong>全部文档</strong>
-                <span>已索引 36 个片段</span>
+        <div class="product-layout">
+          <aside class="inputs">
+            <div class="section-title">输入材料</div>
+            <div class="stack">
+              <article class="input-type">
+                <strong>文件夹地址</strong>
+                <p class="hint">粘贴本地项目资料目录。</p>
+                <div class="paste-box">D:\项目\周年庆\需求资料</div>
               </article>
-              <article class="doc">
-                <strong>周年庆小程序</strong>
-                <span>docx / 需求文档</span>
+              <article class="input-type">
+                <strong>图片</strong>
+                <p class="hint">截图、流程图、评审图。</p>
+                <div class="paste-box">拖入或粘贴图片</div>
               </article>
-              <article class="doc">
-                <strong>专题进度计划</strong>
-                <span>xlsx / 排期与变更</span>
+              <article class="input-type">
+                <strong>链接</strong>
+                <p class="hint">需求地址、页面、竞品资料。</p>
+                <div class="paste-box">https://...</div>
               </article>
-              <article class="doc">
-                <strong>验收助手</strong>
-                <span>md / 测试清单</span>
+              <article class="input-type">
+                <strong>文字说明</strong>
+                <p class="hint">补充背景、目标、约束。</p>
+                <div class="paste-box">输入临时上下文</div>
               </article>
+            </div>
+
+            <div class="material-list">
+              <div class="section-title">已加入</div>
+              <div class="stack">
+                <article class="source-card">
+                  <strong>周年庆 PRD.docx</strong>
+                  <p class="meta">需求背景 / 规则 / 排期</p>
+                </article>
+                <article class="source-card">
+                  <strong>流程截图.png</strong>
+                  <p class="meta">待识别关键页面</p>
+                </article>
+                <article class="source-card">
+                  <strong>评审链接</strong>
+                  <p class="meta">待抓取或手动摘要</p>
+                </article>
+              </div>
             </div>
           </aside>
 
-          <section class="center">
-            <div class="section-title">主工作区</div>
-            <div class="input-card">
-              <div class="input-row">
-                <div class="fake-input">输入问题或产品任务，例如：游园会的载体是什么？</div>
-                <div class="button primary">AI 回答</div>
+          <section class="workbench">
+            <div class="section-title">工作台</div>
+            <div class="task-box">
+              <div class="task-row">
+                <div class="fake-textarea">输入产品任务：根据这些资料，判断这次游园会应该怎么做，和历史方案相比有哪些变化？</div>
+                <div class="button primary">运行</div>
               </div>
-              <div class="result">
-                <h2>回答 / 方案</h2>
-                <p>
-                  这里显示当前模式下的主要产物。知识库问答输出“基于资料的答案”，产品专家输出“需求判断、历史变化、推荐方案和验收重点”。
-                </p>
-                <div class="mode-preview">
-                  <article class="preview-card active">
-                    <h3>知识库问答</h3>
-                    <p class="hint">查事实、查规则、查来源。答案必须带引用。</p>
+              <div class="canvas">
+                <h2>分析过程</h2>
+                <p class="hint">先整理输入材料，再找历史依据，最后生成可评审的产品输出。</p>
+                <div class="process">
+                  <article class="step active">
+                    <strong>1. 整理材料</strong>
+                    <p class="hint">识别文件夹、图片、链接、文字分别提供了什么信息。</p>
                   </article>
-                  <article class="preview-card">
-                    <h3>产品专家</h3>
-                    <p class="hint">分析需求怎么做、改了什么、风险在哪。</p>
+                  <article class="step">
+                    <strong>2. 匹配历史</strong>
+                    <p class="hint">找相似需求、历史变更和可复用规则。</p>
+                  </article>
+                  <article class="step">
+                    <strong>3. 形成判断</strong>
+                    <p class="hint">输出方案、风险、待确认问题和验收重点。</p>
                   </article>
                 </div>
               </div>
             </div>
+
+            <div class="output-area">
+              <div class="output-head">
+                <strong>输出结果</strong>
+                <span class="meta">可复制 / 可继续追问 / 可生成清单</span>
+              </div>
+              <div class="output-grid">
+                <article class="output-card primary-output">
+                  <strong>推荐方案</strong>
+                  <p class="hint">本次需求建议采用的产品方案、关键取舍和原因。</p>
+                </article>
+                <article class="output-card">
+                  <strong>待确认问题</strong>
+                  <p class="hint">资料里没说清楚、需要找产品或研发确认的点。</p>
+                </article>
+                <article class="output-card">
+                  <strong>历史变化</strong>
+                  <p class="hint">和历史需求相比，新增、删除、调整了什么。</p>
+                </article>
+                <article class="output-card">
+                  <strong>验收重点</strong>
+                  <p class="hint">测试、运营、研发需要重点关注的场景。</p>
+                </article>
+              </div>
+            </div>
           </section>
 
-          <aside class="right">
-            <div class="section-title">引用与诊断</div>
-            <div class="evidence">
-              <article class="source trace">
+          <aside class="diagnosis">
+            <div class="section-title">来源与诊断</div>
+            <div class="stack">
+              <article class="diagnostic-card">
+                <strong>资料覆盖</strong>
+                <p class="meta">PRD、截图、链接、补充说明是否都被读取。</p>
+                <div class="mini-bar"></div>
+              </article>
+              <article class="diagnostic-card">
                 <strong>引用来源</strong>
-                <p class="meta">文件名 / 片段 / 摘要 / 分数</p>
+                <p class="meta">每条结论对应哪些文件、图片或链接。</p>
               </article>
-              <article class="source">
-                <strong>检索状态</strong>
-                <p class="meta">命中、补救、拒答原因</p>
+              <article class="diagnostic-card warn">
+                <strong>当前问题</strong>
+                <p class="meta">图片未 OCR、链接未抓取、历史资料不足等。</p>
               </article>
-              <article class="source">
-                <strong>术语提示</strong>
-                <p class="meta">载体 = 小程序 / 移动端 / H5 等候选</p>
+              <article class="diagnostic-card">
+                <strong>可信度</strong>
+                <p class="meta">依据是否充分，是否需要人工补材料。</p>
               </article>
             </div>
           </aside>
         </div>
       </section>
 
-      <section class="simple-note">
-        <article class="note-box">
-          <strong>页面只做一件事</strong>
-          <p class="hint">先让用户选择“问答”还是“产品专家”。</p>
+      <section class="principles">
+        <article class="principle">
+          <strong>左侧是输入</strong>
+          <p class="hint">像 Codex 一样，把所有资料先放进任务上下文。</p>
         </article>
-        <article class="note-box">
-          <strong>中间永远是主产物</strong>
-          <p class="hint">不要把评测、Trace、术语全堆到主区域。</p>
+        <article class="principle">
+          <strong>中间是工作台</strong>
+          <p class="hint">展示 AI 正在如何整理、匹配、判断。</p>
         </article>
-        <article class="note-box">
-          <strong>右侧只放证据</strong>
-          <p class="hint">让用户知道答案从哪里来、是否可信。</p>
+        <article class="principle">
+          <strong>下方是输出</strong>
+          <p class="hint">最终沉淀方案、变化、风险和验收重点。</p>
         </article>
       </section>
     </main>
