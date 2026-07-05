@@ -3,18 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Personal KB AI Workspace Wireframes</title>
+    <title>Personal KB 简洁工作台线稿</title>
     <style>
       :root {
         --ink: #171814;
-        --muted: #6a6b63;
-        --line: #c8c3b5;
-        --paper: #f6f2e8;
+        --muted: #6a675f;
+        --line: #c8c0ae;
+        --paper: #f7f3e9;
         --panel: #fffaf0;
-        --soft: #e9e2d2;
-        --accent: #306f5d;
-        --accent-2: #8b5d2e;
-        --danger: #8f3d31;
+        --soft: #ece4d3;
+        --active: #1f1f1b;
+        --accent: #2f6f5d;
       }
 
       * {
@@ -28,21 +27,18 @@
         font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
       }
 
-      .board {
-        display: grid;
-        gap: 24px;
-        max-width: 1480px;
-        margin: 0 auto;
-        padding: 28px;
+      .page {
+        min-height: 100vh;
+        padding: 32px;
       }
 
-      .board-header {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        align-items: end;
-        gap: 20px;
-        border-bottom: 2px solid var(--ink);
-        padding-bottom: 18px;
+      .header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        padding-bottom: 20px;
+        border-bottom: 3px solid var(--ink);
       }
 
       h1,
@@ -53,566 +49,371 @@
       }
 
       h1 {
-        font-size: 26px;
+        font-size: 30px;
         letter-spacing: 0;
       }
 
-      .board-header p,
-      .note,
-      small {
+      .subtitle {
+        margin-top: 8px;
         color: var(--muted);
-        line-height: 1.55;
+        font-size: 15px;
       }
 
       .badge {
-        border: 1px solid var(--ink);
-        padding: 7px 10px;
+        border: 1.5px solid var(--ink);
+        padding: 10px 14px;
+        font-weight: 700;
         background: var(--panel);
-        font-size: 12px;
-        font-weight: 800;
+        white-space: nowrap;
       }
 
       .wireframe {
-        display: grid;
-        gap: 14px;
-        border: 2px solid var(--ink);
+        margin-top: 28px;
+        border: 3px solid var(--ink);
         background: var(--panel);
-        padding: 16px;
+        box-shadow: 8px 8px 0 rgba(23, 24, 20, 0.22);
       }
 
-      .wireframe-head {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 14px;
-        align-items: start;
-      }
-
-      .wireframe-head h2 {
-        font-size: 18px;
-      }
-
-      .wireframe-head p {
-        margin-top: 6px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.55;
-      }
-
-      .screen {
-        min-height: 640px;
-        border: 2px solid var(--ink);
-        background: #fbf7ee;
-        overflow: hidden;
-      }
-
-      .top {
-        display: grid;
-        grid-template-columns: 220px 1fr auto;
+      .topbar {
+        display: flex;
         align-items: center;
-        gap: 14px;
-        min-height: 64px;
-        border-bottom: 1px solid var(--ink);
-        padding: 12px 14px;
-        background: #f4efe4;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 70px;
+        padding: 14px 18px;
+        border-bottom: 2px solid var(--ink);
       }
 
       .brand {
-        font-weight: 900;
-      }
-
-      .tabs,
-      .chips,
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .tab,
-      .chip,
-      .btn {
-        min-height: 30px;
-        border: 1px solid var(--ink);
-        background: transparent;
-        padding: 6px 9px;
-        font-size: 12px;
+        font-size: 20px;
         font-weight: 800;
       }
 
-      .tab.active,
-      .btn.primary,
-      .chip.active {
-        background: var(--ink);
+      .modes {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .mode {
+        border: 1.5px solid var(--ink);
+        padding: 10px 14px;
+        background: var(--panel);
+        font-weight: 700;
+      }
+
+      .mode.active {
+        background: var(--active);
         color: #fffaf0;
       }
 
-      .layout-a {
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .button {
+        border: 1.5px solid var(--ink);
+        padding: 10px 14px;
+        background: var(--panel);
+        font-weight: 700;
+      }
+
+      .button.primary {
+        background: var(--active);
+        color: #fffaf0;
+      }
+
+      .workspace {
         display: grid;
-        grid-template-columns: 240px minmax(360px, 1fr) 360px;
-        min-height: 576px;
+        grid-template-columns: 240px minmax(420px, 1fr) 300px;
+        min-height: 610px;
       }
 
-      .layout-b {
-        display: grid;
-        grid-template-columns: 72px minmax(440px, 1fr) 380px;
-        min-height: 576px;
+      .left,
+      .center,
+      .right {
+        padding: 18px;
       }
 
-      .layout-c {
-        display: grid;
-        grid-template-columns: 280px minmax(420px, 1fr) 320px;
-        min-height: 576px;
-      }
-
-      .rail,
-      .main,
-      .side,
-      .navrail {
-        padding: 14px;
-      }
-
-      .rail,
-      .navrail {
-        border-right: 1px solid var(--ink);
-        background: #f1eadc;
-      }
-
-      .side {
-        border-left: 1px solid var(--ink);
-        background: #f7f1e5;
+      .left,
+      .center {
+        border-right: 2px solid var(--ink);
       }
 
       .section-title {
-        margin-bottom: 10px;
-        font-size: 12px;
-        font-weight: 900;
+        margin-bottom: 12px;
+        font-size: 14px;
+        font-weight: 800;
         color: var(--muted);
-        text-transform: uppercase;
       }
 
-      .stack {
+      .doc-list {
         display: grid;
         gap: 10px;
       }
 
-      .box {
-        border: 1px solid var(--line);
-        background: rgba(255, 250, 240, 0.66);
-        padding: 10px;
+      .doc {
+        min-height: 58px;
+        border: 1.5px solid var(--line);
+        padding: 12px;
+        background: #fbf5e9;
       }
 
-      .box.dark {
-        border-color: var(--ink);
-        background: var(--ink);
-        color: #fffaf0;
-      }
-
-      .box h3 {
+      .doc strong {
+        display: block;
         margin-bottom: 6px;
-        font-size: 13px;
+        font-size: 15px;
       }
 
-      .box p,
-      .box li {
+      .doc span,
+      .hint,
+      .meta {
         color: var(--muted);
-        font-size: 12px;
+        font-size: 13px;
         line-height: 1.55;
       }
 
-      .box.dark p {
-        color: #e8dfcf;
-      }
-
-      .list {
-        display: grid;
-        gap: 8px;
-      }
-
-      .row {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 8px;
-        border: 1px solid var(--line);
-        padding: 8px;
-        background: rgba(255, 250, 240, 0.5);
-        font-size: 12px;
-      }
-
-      .command {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 10px;
+      .input-card {
         border: 2px solid var(--ink);
-        background: #fffaf0;
-        padding: 12px;
+        background: #fffdf6;
       }
 
-      .command span {
-        color: var(--muted);
-      }
-
-      .answer-canvas,
-      .artifact-canvas,
-      .expert-canvas {
-        display: grid;
-        gap: 12px;
-        margin-top: 14px;
-      }
-
-      .large-block {
-        min-height: 128px;
-        border: 1px solid var(--line);
-        background: rgba(255, 250, 240, 0.75);
-        padding: 12px;
-      }
-
-      .metric-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-      }
-
-      .metric {
-        border: 1px solid var(--line);
-        padding: 9px;
-        background: #fbf7ee;
-      }
-
-      .metric b {
-        display: block;
-        font-size: 18px;
-      }
-
-      .metric span {
-        color: var(--muted);
-        font-size: 11px;
-      }
-
-      .flow {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 8px;
-      }
-
-      .step {
-        min-height: 76px;
-        border: 1px solid var(--line);
-        background: #fbf7ee;
-        padding: 8px;
-      }
-
-      .step b {
-        font-size: 12px;
-      }
-
-      .step p {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 11px;
-        line-height: 1.4;
-      }
-
-      .navrail {
-        display: grid;
-        align-content: start;
-        justify-items: center;
-        gap: 10px;
-      }
-
-      .nav-icon {
-        display: grid;
-        width: 42px;
-        height: 42px;
-        place-items: center;
-        border: 1px solid var(--ink);
-        font-size: 18px;
-        font-weight: 900;
-      }
-
-      .nav-icon.active {
-        background: var(--ink);
-        color: #fffaf0;
-      }
-
-      .split-title {
+      .input-row {
         display: grid;
         grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding: 14px;
+        border-bottom: 1.5px solid var(--line);
+      }
+
+      .fake-input {
+        min-height: 48px;
+        display: flex;
         align-items: center;
-        gap: 12px;
+        padding: 0 14px;
+        border: 1.5px solid var(--line);
+        color: var(--muted);
+      }
+
+      .result {
+        min-height: 250px;
+        padding: 20px;
+      }
+
+      .result h2 {
         margin-bottom: 12px;
+        font-size: 24px;
       }
 
-      .recommend {
+      .result p {
+        max-width: 760px;
+        line-height: 1.75;
+      }
+
+      .mode-preview {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .preview-card {
+        min-height: 104px;
+        border: 1.5px solid var(--line);
+        padding: 14px;
+        background: var(--paper);
+      }
+
+      .preview-card.active {
         border-color: var(--accent);
-        background: #eef5ed;
+        background: #eef5ef;
       }
 
-      .risk {
-        border-color: var(--danger);
-        background: #fae9e5;
+      .preview-card h3 {
+        margin-bottom: 8px;
+        font-size: 16px;
       }
 
-      .product-map {
+      .evidence {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
+        gap: 12px;
       }
 
-      .module-footer {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 12px;
+      .source {
+        border: 1.5px solid var(--line);
+        padding: 14px;
+        background: #fbf5e9;
       }
 
-      .decision {
-        border: 2px solid var(--ink);
-        background: #f4efe4;
-        padding: 12px;
+      .source strong {
+        display: block;
+        margin-bottom: 8px;
       }
 
-      .pros-cons {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
+      .trace {
+        border: 1.5px solid var(--accent);
+        background: #eef5ef;
       }
 
-      .summary-grid {
+      .simple-note {
+        margin-top: 20px;
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 14px;
+        gap: 12px;
+      }
+
+      .note-box {
+        border: 1.5px solid var(--line);
+        padding: 14px;
+        background: rgba(255, 250, 240, 0.7);
+      }
+
+      .note-box strong {
+        display: block;
+        margin-bottom: 6px;
       }
 
       @media (max-width: 1100px) {
-        .board-header,
-        .wireframe-head,
-        .top,
-        .layout-a,
-        .layout-b,
-        .layout-c,
-        .summary-grid,
-        .product-map,
-        .module-footer,
-        .pros-cons,
-        .flow {
+        .workspace {
           grid-template-columns: 1fr;
         }
 
-        .side,
-        .rail,
-        .navrail {
-          border: 0;
-          border-bottom: 1px solid var(--ink);
+        .left,
+        .center {
+          border-right: 0;
+          border-bottom: 2px solid var(--ink);
+        }
+
+        .simple-note {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          padding: 18px;
+        }
+
+        .header,
+        .topbar,
+        .input-row {
+          align-items: stretch;
+          flex-direction: column;
+          grid-template-columns: 1fr;
+        }
+
+        .mode-preview {
+          grid-template-columns: 1fr;
         }
       }
     </style>
   </head>
   <body>
-    <main class="board">
-      <header class="board-header">
+    <main class="page">
+      <header class="header">
         <div>
-          <h1>Personal KB：AI 工作台线稿</h1>
-          <p>目标：把“知识库问答”和“产品专家”拆成两个清楚场景，同时保留引用、诊断、术语、评测这些 AI 时代产品的可信链路。</p>
+          <h1>Personal KB：简洁双模式工作台</h1>
+          <p class="subtitle">把“知识库问答”和“产品专家”分开，但共用同一套资料、引用和诊断。</p>
         </div>
-        <span class="badge">Low-fi / 结构优先</span>
+        <div class="badge">方案 A / 简洁版</div>
       </header>
 
-      <section class="summary-grid">
-        <article class="box">
-          <h3>共同原则</h3>
-          <p>顶部只放状态和全局动作；主区只服务当前场景；证据、Trace、术语候选统一放在右侧或抽屉。</p>
-        </article>
-        <article class="box">
-          <h3>AI 时代特征</h3>
-          <p>不是堆按钮，而是围绕“意图输入、生成结果、证据来源、诊断反馈、可复用资产”组织页面。</p>
-        </article>
-        <article class="box">
-          <h3>推荐方向</h3>
-          <p>优先推荐方案 A：模式切换清晰，改造成本低，也最适合你当前从 RAG 走向产品专家。</p>
-        </article>
-      </section>
-
       <section class="wireframe">
-        <div class="wireframe-head">
-          <div>
-            <h2>方案 A：双模式工作台（推荐）</h2>
-            <p>适合当前项目。问答和产品专家是两个一级模式，共用文档库、术语库、Trace，但主工作区完全分开。</p>
-          </div>
-          <span class="badge">清晰 / 改造成本低</span>
-        </div>
-        <div class="screen">
-          <div class="top">
-            <div class="brand">Personal KB</div>
-            <div class="tabs">
-              <span class="tab active">知识库问答</span>
-              <span class="tab">产品专家</span>
-              <span class="tab">评测诊断</span>
-            </div>
-            <div class="actions">
-              <span class="btn">索引</span>
-              <span class="btn">挖术语</span>
-            </div>
-          </div>
-          <div class="layout-a">
-            <aside class="rail">
-              <div class="section-title">资料范围</div>
-              <div class="stack">
-                <div class="box">
-                  <h3>全部文档</h3>
-                  <p>36 chunks / hash embedding</p>
-                </div>
-                <div class="row"><span>周年庆小程序</span><b>docx</b></div>
-                <div class="row"><span>专项进度计划</span><b>xlsx</b></div>
-                <div class="row"><span>专题验收助手</span><b>md</b></div>
-              </div>
-            </aside>
-            <section class="main">
-              <div class="command">
-                <span>问文档里的事实、规则、字段、排期...</span>
-                <b>AI 回答</b>
-              </div>
-              <div class="answer-canvas">
-                <article class="large-block">
-                  <h3>回答</h3>
-                  <p>这里展示基于资料生成的答案。关键结论后跟来源编号，不把模型常识当文档依据。</p>
-                </article>
-                <div class="flow">
-                  <div class="step"><b>理解问题</b><p>术语表扩展 query</p></div>
-                  <div class="step"><b>检索证据</b><p>向量 + BM25 + 字段</p></div>
-                  <div class="step"><b>证据判断</b><p>Self-RAG 阈值</p></div>
-                  <div class="step"><b>生成回答</b><p>引用一致性检查</p></div>
-                </div>
-              </div>
-            </section>
-            <aside class="side">
-              <div class="section-title">证据与诊断</div>
-              <div class="stack">
-                <div class="box recommend"><h3>引用来源</h3><p>文件 / chunk / 摘要 / 分数</p></div>
-                <div class="box"><h3>Self-RAG</h3><p>初始分 0.29 → 最终分 0.33</p></div>
-                <div class="box"><h3>术语命中</h3><p>载体 → 小程序 / 移动端 / H5</p></div>
-                <div class="box risk"><h3>风险提示</h3><p>引用支撑偏弱时高亮</p></div>
-              </div>
-            </aside>
+        <div class="topbar">
+          <div class="brand">Personal KB</div>
+          <nav class="modes" aria-label="工作模式">
+            <div class="mode active">知识库问答</div>
+            <div class="mode">产品专家</div>
+          </nav>
+          <div class="actions">
+            <div class="button">索引文档</div>
+            <div class="button primary">开始</div>
           </div>
         </div>
-      </section>
 
-      <section class="wireframe">
-        <div class="wireframe-head">
-          <div>
-            <h2>方案 B：AI 任务台</h2>
-            <p>更像现代 AI 产品：左侧是极简场景栏，中间是任务与结果画布，右侧是上下文和可复用资产。</p>
-          </div>
-          <span class="badge">AI 感强 / 更重构</span>
-        </div>
-        <div class="screen">
-          <div class="layout-b">
-            <nav class="navrail">
-              <div class="nav-icon active">问</div>
-              <div class="nav-icon">案</div>
-              <div class="nav-icon">词</div>
-              <div class="nav-icon">测</div>
-            </nav>
-            <section class="main">
-              <div class="split-title">
-                <div>
-                  <h2>今天要完成什么？</h2>
-                  <small>用一句话描述任务，系统决定走问答、产品分析、评测或术语挖掘。</small>
+        <div class="workspace">
+          <aside class="left">
+            <div class="section-title">资料范围</div>
+            <div class="doc-list">
+              <article class="doc">
+                <strong>全部文档</strong>
+                <span>已索引 36 个片段</span>
+              </article>
+              <article class="doc">
+                <strong>周年庆小程序</strong>
+                <span>docx / 需求文档</span>
+              </article>
+              <article class="doc">
+                <strong>专题进度计划</strong>
+                <span>xlsx / 排期与变更</span>
+              </article>
+              <article class="doc">
+                <strong>验收助手</strong>
+                <span>md / 测试清单</span>
+              </article>
+            </div>
+          </aside>
+
+          <section class="center">
+            <div class="section-title">主工作区</div>
+            <div class="input-card">
+              <div class="input-row">
+                <div class="fake-input">输入问题或产品任务，例如：游园会的载体是什么？</div>
+                <div class="button primary">AI 回答</div>
+              </div>
+              <div class="result">
+                <h2>回答 / 方案</h2>
+                <p>
+                  这里显示当前模式下的主要产物。知识库问答输出“基于资料的答案”，产品专家输出“需求判断、历史变化、推荐方案和验收重点”。
+                </p>
+                <div class="mode-preview">
+                  <article class="preview-card active">
+                    <h3>知识库问答</h3>
+                    <p class="hint">查事实、查规则、查来源。答案必须带引用。</p>
+                  </article>
+                  <article class="preview-card">
+                    <h3>产品专家</h3>
+                    <p class="hint">分析需求怎么做、改了什么、风险在哪。</p>
+                  </article>
                 </div>
-                <span class="badge">Intent-first</span>
               </div>
-              <div class="command">
-                <span>例如：参考历史需求，帮我判断游园会预约应该怎么做</span>
-                <b>运行</b>
-              </div>
-              <div class="artifact-canvas">
-                <article class="large-block">
-                  <h3>生成物</h3>
-                  <p>结果不只是聊天气泡，而是可复用的“方案建议 / 验收清单 / 风险列表 / 引用依据”。</p>
-                </article>
-                <div class="pros-cons">
-                  <div class="box recommend"><h3>推荐方案</h3><p>轻量调整：保留主流程，补授权失败和重复预约。</p></div>
-                  <div class="box"><h3>备选方案</h3><p>复用历史方案 / 重新设计。</p></div>
-                </div>
-                <div class="module-footer">
-                  <div class="metric"><b>4</b><span>引用</span></div>
-                  <div class="metric"><b>0.73</b><span>置信度</span></div>
-                  <div class="metric"><b>2</b><span>待确认</span></div>
-                </div>
-              </div>
-            </section>
-            <aside class="side">
-              <div class="section-title">上下文资产</div>
-              <div class="stack">
-                <div class="box"><h3>当前需求卡片</h3><p>背景 / 目标 / 范围 / 规则</p></div>
-                <div class="box"><h3>相似历史需求</h3><p>3 条，最高相似 45%</p></div>
-                <div class="box"><h3>术语候选</h3><p>载体、承接页、入口</p></div>
-                <div class="box"><h3>最近 Trace</h3><p>拒答 / 补救 / 支撑分</p></div>
-              </div>
-            </aside>
-          </div>
+            </div>
+          </section>
+
+          <aside class="right">
+            <div class="section-title">引用与诊断</div>
+            <div class="evidence">
+              <article class="source trace">
+                <strong>引用来源</strong>
+                <p class="meta">文件名 / 片段 / 摘要 / 分数</p>
+              </article>
+              <article class="source">
+                <strong>检索状态</strong>
+                <p class="meta">命中、补救、拒答原因</p>
+              </article>
+              <article class="source">
+                <strong>术语提示</strong>
+                <p class="meta">载体 = 小程序 / 移动端 / H5 等候选</p>
+              </article>
+            </div>
+          </aside>
         </div>
       </section>
 
-      <section class="wireframe">
-        <div class="wireframe-head">
-          <div>
-            <h2>方案 C：产品专家控制台</h2>
-            <p>如果你后面主要做产品工作，这版最聚焦：按项目和需求组织，不把“问答”放在第一位。</p>
-          </div>
-          <span class="badge">产品 PM 向 / 场景最深</span>
-        </div>
-        <div class="screen">
-          <div class="top">
-            <div class="brand">Product Expert</div>
-            <div class="chips">
-              <span class="chip active">需求洞察</span>
-              <span class="chip">方案推荐</span>
-              <span class="chip">变更时间线</span>
-              <span class="chip">术语治理</span>
-            </div>
-            <div class="actions">
-              <span class="btn primary">生成方案</span>
-            </div>
-          </div>
-          <div class="layout-c">
-            <aside class="rail">
-              <div class="section-title">项目 / 需求</div>
-              <div class="stack">
-                <div class="box dark"><h3>剑网3</h3><p>十七周年庆专题</p></div>
-                <div class="row"><span>线下活动小程序</span><b>1版</b></div>
-                <div class="row"><span>专项进度计划</span><b>1版</b></div>
-                <div class="row"><span>验收试跑</span><b>1版</b></div>
-              </div>
-            </aside>
-            <section class="main">
-              <div class="decision">
-                <h2>当前需求应该怎么做？</h2>
-                <p class="note">基于需求卡片、历史相似需求、时间线和术语候选，输出可评审的产品判断材料。</p>
-              </div>
-              <div class="expert-canvas">
-                <div class="product-map">
-                  <article class="box"><h3>需求卡片</h3><p>目标、范围、规则、风险、验收。</p></article>
-                  <article class="box"><h3>历史相似</h3><p>同项目、同模块、共同关键词。</p></article>
-                  <article class="box"><h3>需求演进</h3><p>版本、变更、反复影响模块。</p></article>
-                  <article class="box"><h3>术语修正</h3><p>载体、入口、承接页等候选。</p></article>
-                </div>
-                <article class="large-block recommend">
-                  <h3>方案建议画布</h3>
-                  <p>推荐方案、备选方案、取舍、风险、验收清单、需要同步的人。</p>
-                </article>
-              </div>
-            </section>
-            <aside class="side">
-              <div class="section-title">产品风险</div>
-              <div class="stack">
-                <div class="box risk"><h3>待确认</h3><p>预约池分流是否需要后台配置。</p></div>
-                <div class="box"><h3>验收清单</h3><p>授权失败 / 重复预约 / 切环境。</p></div>
-                <div class="box"><h3>证据来源</h3><p>PRD / 进度表 / 历史 trace。</p></div>
-              </div>
-            </aside>
-          </div>
-        </div>
+      <section class="simple-note">
+        <article class="note-box">
+          <strong>页面只做一件事</strong>
+          <p class="hint">先让用户选择“问答”还是“产品专家”。</p>
+        </article>
+        <article class="note-box">
+          <strong>中间永远是主产物</strong>
+          <p class="hint">不要把评测、Trace、术语全堆到主区域。</p>
+        </article>
+        <article class="note-box">
+          <strong>右侧只放证据</strong>
+          <p class="hint">让用户知道答案从哪里来、是否可信。</p>
+        </article>
       </section>
     </main>
   </body>
