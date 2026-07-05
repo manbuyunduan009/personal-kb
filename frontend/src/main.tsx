@@ -249,7 +249,7 @@ function App() {
         const change = await analyzeChange(previous.document_id, latest.document_id);
         setChangeAnalysis(change);
       }
-      setProductMessage(`已基于 ${group.requirement_title} 生成产品专家草稿。`);
+      setProductMessage(`已基于 ${group.requirement_title} 生成方案草稿。`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -291,16 +291,16 @@ function App() {
     <main className="app-shell">
       <header className="app-topbar">
         <div className="brand-block">
-          <h1>产品知识工作台</h1>
+          <h1>网站资料问答与方案生成</h1>
         </div>
         <div className="mode-switch" aria-label="工作模式">
           <button className={mode === "expert" ? "active" : ""} onClick={() => setMode("expert")}>
             <Sparkles size={16} />
-            产品专家
+            方案生成
           </button>
           <button className={mode === "qa" ? "active" : ""} onClick={() => setMode("qa")}>
             <MessageSquareText size={16} />
-            知识库问答
+            资料问答
           </button>
         </div>
       </header>
@@ -323,7 +323,7 @@ function App() {
 
       <section className="workspace">
         <aside className="context-panel">
-          <PanelTitle icon={<FolderOpen size={16} />} title="文件上下文" />
+          <PanelTitle icon={<FolderOpen size={16} />} title="资料目录" />
           <div className="folder-card">
             <b>{rootPath}</b>
             <span>{documents.length} 个文件 · {health?.chunk_count ?? health?.chroma_count ?? 0} 个片段</span>
@@ -378,7 +378,7 @@ function App() {
         </section>
 
         <aside className="diagnostic-panel">
-          <PanelTitle icon={mode === "expert" ? <GitBranch size={16} /> : <Search size={16} />} title="来源与诊断" />
+          <PanelTitle icon={mode === "expert" ? <GitBranch size={16} /> : <Search size={16} />} title="来源" />
           {mode === "expert" ? (
             <ProductDiagnostics
               selectedRequirement={selectedRequirement}
@@ -442,7 +442,7 @@ function ProductExpertWorkbench({
     <>
       <section className="command-panel">
         <div>
-          <h2>产品判断</h2>
+          <h2>方案生成</h2>
         </div>
         <div className="requirement-select">
           <label>
@@ -546,7 +546,7 @@ function ProductExpertWorkbench({
       <section className="output-panel">
         <div className="output-header">
           <div>
-            <h2>产品方案草稿</h2>
+            <h2>方案草稿</h2>
           </div>
           {productMessage && <span>{productMessage}</span>}
         </div>
@@ -598,7 +598,7 @@ function KnowledgeQaWorkbench({
     <>
       <section className="command-panel">
         <div>
-          <h2>知识库问答</h2>
+          <h2>资料问答</h2>
         </div>
         <div className="task-input">
           <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
