@@ -5,15 +5,15 @@ import {
   BookOpen,
   Database,
   FileText,
+  FolderOpen,
   GitBranch,
-  Lightbulb,
+  History,
   Loader2,
   MessageSquareText,
   Play,
   Search,
   Server,
   Sparkles,
-  Tags,
   ThumbsDown,
   ThumbsUp
 } from "lucide-react";
@@ -24,10 +24,7 @@ import {
   Citation,
   CitationCheck,
   DocumentItem,
-  DomainTermCandidate,
-  DomainTermCandidatesResult,
   getDocuments,
-  getDomainTermCandidates,
   getHealth,
   getProductRequirements,
   getRequirementCard,
@@ -37,10 +34,10 @@ import {
   getTraces,
   Health,
   IndexResult,
-  RequirementCard,
   RagTrace,
-  RequirementTimeline,
+  RequirementCard,
   RequirementGroup,
+  RequirementTimeline,
   runIndex,
   search,
   SearchHit,
@@ -51,57 +48,65 @@ import {
 } from "./api";
 import "./styles.css";
 
-function formatDate(value: string) {
-  return value ? new Date(value).toLocaleString("zh-CN") : "-";
-}
-
-function shortPath(path: string) {
-  const parts = path.split(/[\\/]/);
-  return parts.slice(Math.max(0, parts.length - 3)).join(" / ");
-}
+type Mode = "qa" | "expert";
+type LoadingKey =
+  | "boot"
+  | "index"
+  | "search"
+  | "chat"
+  | "expert"
+  | "card"
+  | "similar"
+  | "timeline"
+  | "recommendation"
+  | "";
 
 function App() {
+  const [mode, setMode] = useState<Mode>("expert");
   const [health, setHealth] = useState<Health | null>(null);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [question, setQuestion] = useState("专题验收助手的目标用户是谁？");
+  const [traces, setTraces] = useState<RagTrace[]>([]);
+  const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedRequirementKey, setSelectedRequirementKey] = useState("");
+  const [question, setQuestion] = useState("游园会的载体是啥？");
+  const [productTask, setProductTask] = useState(
+    "根据当前文件夹里的资料，判断这次游园会应该怎么做，和历史方案相比有哪些变化？"
+  );
   const [answer, setAnswer] = useState("");
   const [citations, setCitations] = useState<Citation[]>([]);
   const [citationCheck, setCitationCheck] = useState<CitationCheck | null>(null);
   const [results, setResults] = useState<SearchHit[]>([]);
-  const [traces, setTraces] = useState<RagTrace[]>([]);
-  const [requirements, setRequirements] = useState<RequirementGroup[]>([]);
-  const [termCandidates, setTermCandidates] = useState<DomainTermCandidatesResult | null>(null);
+  const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
   const [requirementCard, setRequirementCard] = useState<RequirementCard | null>(null);
   const [similarRequirements, setSimilarRequirements] = useState<SimilarRequirementsResult | null>(null);
   const [requirementTimeline, setRequirementTimeline] = useState<RequirementTimeline | null>(null);
   const [solutionRecommendation, setSolutionRecommendation] = useState<SolutionRecommendation | null>(null);
   const [changeAnalysis, setChangeAnalysis] = useState<ChangeAnalysis | null>(null);
   const [indexResult, setIndexResult] = useState<IndexResult | null>(null);
-  const [loading, setLoading] = useState<
-    | "index"
-    | "search"
-    | "chat"
-    | "product"
-    | "card"
-    | "similar"
-    | "timeline"
-    | "recommendation"
-    | "terms"
-    | "boot"
-    | ""
-  >("boot");
+  const [loading, setLoading] = useState<LoadingKey>("boot");
   const [error, setError] = useState("");
   const [lastSearchQuery, setLastSearchQuery] = useState("");
-  const [selfRag, setSelfRag] = useState<SelfRagStatus | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [feedbackLoadingKey, setFeedbackLoadingKey] = useState("");
   const [productMessage, setProductMessage] = useState("");
 
   const selectedDocument = useMemo(
-    () => documents.find((document) => document.id === selectedId) || documents[0],
+    () => documents.find((document) => document.id === selectedId) || documents[0] || null,
     [documents, selectedId]
   );
+
+  const selectedRequirement = useMemo(
+    () =>
+      requirements.find((requirement) => requirement.requirement_key === selectedRequirementKey) ||
+      requirements[0] ||
+      null,
+    [requirements, selectedRequirementKey]
+  );
+
+  const folderRows = useMemo(() => buildFolderRows(documents), [documents]);
+  const rootPath = health?.docs_root || "D:\\vscode\\动效\\docs";
+  const latestTrace = traces[0] || null;
 
   async function refresh() {
     const [healthData, documentData, traceData, requirementData] = await Promise.all([
@@ -116,6 +121,9 @@ function App() {
     setRequirements(requirementData.requirements);
     if (!selectedId && documentData.documents[0]) {
       setSelectedId(documentData.documents[0].id);
+    }
+    if (!selectedRequirementKey && requirementData.requirements[0]) {
+      setSelectedRequirementKey(requirementData.requirements[0].requirement_key);
     }
   }
 
@@ -141,6 +149,7 @@ function App() {
 
   async function handleSearch() {
     if (!question.trim()) return;
+    setMode("qa");
     setLoading("search");
     setError("");
     try {
@@ -158,6 +167,7 @@ function App() {
 
   async function handleChat() {
     if (!question.trim()) return;
+    setMode("qa");
     setLoading("chat");
     setError("");
     try {
@@ -166,8 +176,7 @@ function App() {
       setCitations(data.citations);
       setSelfRag(data.self_rag);
       setCitationCheck(data.citation_check || null);
-      const searchData = await search(question);
-      const traceData = await getTraces();
+      const [searchData, traceData] = await Promise.all([search(question), getTraces()]);
       setResults(searchData.results);
       setTraces(traceData.traces);
       setLastSearchQuery(question);
@@ -209,37 +218,41 @@ function App() {
     }
   }
 
-  async function handleAnalyzeRequirement(group: RequirementGroup) {
-    setProductMessage("");
+  function clearProductOutputs() {
+    setRequirementCard(null);
+    setSimilarRequirements(null);
+    setRequirementTimeline(null);
+    setSolutionRecommendation(null);
     setChangeAnalysis(null);
-    if (group.versions.length < 2) {
-      setProductMessage("这个需求当前只有 1 个版本，明天换办公资料后可用两个版本做变更分析。");
+  }
+
+  async function handleRunProductExpert(group = selectedRequirement) {
+    if (!group) {
+      setProductMessage("当前还没有可分析的需求，请先索引资料。");
       return;
     }
-
-    const [latest, previous] = group.versions;
-    setLoading("product");
-    setError("");
-    try {
-      const result = await analyzeChange(previous.document_id, latest.document_id);
-      setChangeAnalysis(result);
-      setProductMessage(`已分析：${group.requirement_title} 的最新两个版本。`);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading("");
-    }
-  }
-
-  async function handleLoadRequirementCard(group: RequirementGroup) {
+    setMode("expert");
     setProductMessage("");
-    setRequirementCard(null);
-    setLoading("card");
     setError("");
+    setLoading("expert");
+    clearProductOutputs();
     try {
-      const card = await getRequirementCard(group.requirement_key);
+      const [card, similar, timeline, recommendation] = await Promise.all([
+        getRequirementCard(group.requirement_key),
+        getSimilarRequirements(group.requirement_key, 3),
+        getRequirementTimeline(group.requirement_key),
+        getSolutionRecommendation(group.requirement_key)
+      ]);
       setRequirementCard(card);
-      setProductMessage(`已生成需求卡片：${group.requirement_title}`);
+      setSimilarRequirements(similar);
+      setRequirementTimeline(timeline);
+      setSolutionRecommendation(recommendation);
+      if (group.versions.length >= 2) {
+        const [latest, previous] = group.versions;
+        const change = await analyzeChange(previous.document_id, latest.document_id);
+        setChangeAnalysis(change);
+      }
+      setProductMessage(`已基于 ${group.requirement_title} 生成产品专家草稿。`);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -247,62 +260,29 @@ function App() {
     }
   }
 
-  async function handleLoadSimilarRequirements(group: RequirementGroup) {
+  async function handleLoadProductPart(kind: "card" | "similar" | "timeline" | "recommendation") {
+    if (!selectedRequirement) return;
+    setMode("expert");
     setProductMessage("");
-    setSimilarRequirements(null);
-    setLoading("similar");
     setError("");
+    setLoading(kind);
     try {
-      const result = await getSimilarRequirements(group.requirement_key, 3);
-      setSimilarRequirements(result);
-      setProductMessage(`已查找相似需求：${group.requirement_title}`);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading("");
-    }
-  }
-
-  async function handleLoadRequirementTimeline(group: RequirementGroup) {
-    setProductMessage("");
-    setRequirementTimeline(null);
-    setLoading("timeline");
-    setError("");
-    try {
-      const result = await getRequirementTimeline(group.requirement_key);
-      setRequirementTimeline(result);
-      setProductMessage(`已生成需求演进时间线：${group.requirement_title}`);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading("");
-    }
-  }
-
-  async function handleLoadSolutionRecommendation(group: RequirementGroup) {
-    setProductMessage("");
-    setSolutionRecommendation(null);
-    setLoading("recommendation");
-    setError("");
-    try {
-      const result = await getSolutionRecommendation(group.requirement_key);
-      setSolutionRecommendation(result);
-      setProductMessage(`已生成方案建议：${group.requirement_title}`);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading("");
-    }
-  }
-
-  async function handleLoadTermCandidates() {
-    setProductMessage("");
-    setLoading("terms");
-    setError("");
-    try {
-      const result = await getDomainTermCandidates(40);
-      setTermCandidates(result);
-      setProductMessage(`已挖掘术语候选：${result.candidates.length} 个`);
+      if (kind === "card") {
+        setRequirementCard(await getRequirementCard(selectedRequirement.requirement_key));
+        setProductMessage("已生成需求卡片。");
+      }
+      if (kind === "similar") {
+        setSimilarRequirements(await getSimilarRequirements(selectedRequirement.requirement_key, 3));
+        setProductMessage("已找到相似历史需求。");
+      }
+      if (kind === "timeline") {
+        setRequirementTimeline(await getRequirementTimeline(selectedRequirement.requirement_key));
+        setProductMessage("已生成需求演进时间线。");
+      }
+      if (kind === "recommendation") {
+        setSolutionRecommendation(await getSolutionRecommendation(selectedRequirement.requirement_key));
+        setProductMessage("已生成方案建议。");
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -311,594 +291,663 @@ function App() {
   }
 
   return (
-    <main className="shell">
-      <section className="topbar">
-        <div>
-          <p className="eyebrow">本地 RAG 工作台</p>
-          <h1>个人知识库</h1>
+    <main className="app-shell">
+      <header className="app-topbar">
+        <div className="brand-block">
+          <span className="eyebrow">Personal KB</span>
+          <h1>AI 产品知识工作台</h1>
         </div>
-        <div className="status-grid">
-          <Status icon={<Server size={17} />} label="后端" value={health?.ok ? "已连接" : "未连接"} />
-          <Status icon={<BookOpen size={17} />} label="文档" value={`${documents.length} 个`} />
-          <Status icon={<Database size={17} />} label="切片" value={`${health?.chunk_count ?? health?.chroma_count ?? 0} 个`} />
-          <Status icon={<Sparkles size={17} />} label="向量模式" value={health?.embedding_provider || "未知"} />
+        <div className="mode-switch" aria-label="工作模式">
+          <button className={mode === "expert" ? "active" : ""} onClick={() => setMode("expert")}>
+            <Sparkles size={16} />
+            产品专家
+          </button>
+          <button className={mode === "qa" ? "active" : ""} onClick={() => setMode("qa")}>
+            <MessageSquareText size={16} />
+            知识库问答
+          </button>
         </div>
-      </section>
+        <div className="top-actions">
+          <StatusDot label="后端" value={health?.ok ? "已连接" : "未连接"} />
+          <StatusDot label="文档" value={`${documents.length} 个`} />
+          <StatusDot label="向量" value={health?.embedding_provider || "未知"} />
+          <button onClick={handleIndex} disabled={loading === "index"}>
+            {loading === "index" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
+            打开/索引文件夹
+          </button>
+        </div>
+      </header>
 
-      <section className="pathbar">
-        <span>{health?.docs_root || "D:\\vscode\\动效\\docs"}</span>
-        <button onClick={handleIndex} disabled={loading === "index"}>
-          {loading === "index" ? <Loader2 className="spin" size={18} /> : <Play size={18} />}
-          索引文档
-        </button>
-      </section>
-
-      {health && !health.vector_ready && (
-        <section className="notice error">
-          <AlertCircle size={18} />
-          <span>向量库未就绪：{health.vector_error}</span>
-        </section>
-      )}
-
-      {error && (
-        <section className="notice error">
-          <AlertCircle size={18} />
-          <span>{error}</span>
-        </section>
-      )}
-
-      {indexResult && (
-        <section className="notice">
-          <Database size={18} />
-          <span>
-            已索引 {indexResult.indexed.length} 个，跳过 {indexResult.skipped.length} 个，失败 {indexResult.failed.length} 个
-          </span>
-        </section>
-      )}
-
-      {feedbackMessage && (
-        <section className="notice">
-          <ThumbsUp size={18} />
-          <span>{feedbackMessage} 下次检索会参考这条反馈。</span>
+      {(error || feedbackMessage || indexResult || (health && !health.vector_ready)) && (
+        <section className="notice-row">
+          {health && !health.vector_ready && (
+            <Notice tone="error" icon={<AlertCircle size={16} />} text={`向量库未就绪：${health.vector_error}`} />
+          )}
+          {error && <Notice tone="error" icon={<AlertCircle size={16} />} text={error} />}
+          {feedbackMessage && <Notice icon={<ThumbsUp size={16} />} text={`${feedbackMessage} 下次检索会参考这条反馈。`} />}
+          {indexResult && (
+            <Notice
+              icon={<Database size={16} />}
+              text={`已索引 ${indexResult.indexed.length} 个，跳过 ${indexResult.skipped.length} 个，失败 ${indexResult.failed.length} 个`}
+            />
+          )}
         </section>
       )}
 
       <section className="workspace">
-        <aside className="documents">
-          <div className="panel-head">
-            <FileText size={18} />
-            <h2>文档列表</h2>
+        <aside className="context-panel">
+          <PanelTitle icon={<FolderOpen size={16} />} title="文件上下文" />
+          <div className="folder-card">
+            <b>{rootPath}</b>
+            <span>{documents.length} 个文件 · {health?.chunk_count ?? health?.chroma_count ?? 0} 个片段</span>
           </div>
-          <div className="doc-list">
+          <div className="file-tree">
             {documents.length === 0 && <p className="empty">还没有索引文档。</p>}
-            {documents.map((document) => (
+            {folderRows.map((row) => (
               <button
-                key={document.id}
-                className={document.id === selectedDocument?.id ? "doc active" : "doc"}
-                onClick={() => setSelectedId(document.id)}
+                key={row.id}
+                className={`file-row ${row.documentId === selectedDocument?.id ? "active" : ""} ${row.kind}`}
+                onClick={() => row.documentId && setSelectedId(row.documentId)}
               >
-                <span className="doc-title">{document.title}</span>
-                <span className="doc-meta">
-                  {document.file_type} · {document.chunk_count} 个切片
-                </span>
-                <span className="doc-path">{shortPath(document.source_path)}</span>
+                <span>{row.title}</span>
+                <small>{row.meta}</small>
               </button>
             ))}
           </div>
         </aside>
 
-        <section className="chat-panel">
-          <div className="panel-head">
-            <MessageSquareText size={18} />
-            <h2>提问</h2>
-          </div>
-          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
-          <div className="actions">
-            <button onClick={handleSearch} disabled={loading === "search"}>
-              {loading === "search" ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
-              只检索
-            </button>
-            <button className="primary" onClick={handleChat} disabled={loading === "chat"}>
-              {loading === "chat" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-              AI 回答
-            </button>
-          </div>
-
-          <article className="answer">
-            <h3>回答</h3>
-            <p>{answer || "先索引文档，再输入问题。没有配置 OPENAI_API_KEY 时，语义检索仍可用，AI 回答会显示明确的配置提示。"}</p>
-          </article>
-
-          {selfRag && (
-            <article className="self-rag">
-              <h3>Self-RAG 检查</h3>
-              <div className="self-rag-grid">
-                <span>状态</span>
-                <b>{selfRagStatusLabel(selfRag.status)}</b>
-                <span>初始最高分</span>
-                <b>{selfRag.initial_best_score.toFixed(2)}</b>
-                <span>最终最高分</span>
-                <b>{selfRag.final_best_score.toFixed(2)}</b>
-                <span>证据阈值</span>
-                <b>{selfRag.min_evidence_score.toFixed(2)}</b>
-                <span>召回方式</span>
-                <b>{formatList(selfRag.retrieval_modes || []) || "未记录"}</b>
-                <span>改写来源</span>
-                <b>{selfRag.query_rewrite_used_llm ? "LLM 改写" : selfRag.rescue_query_source || "规则/未触发"}</b>
-              </div>
-              {selfRag.query_rewrite_error && <p className="diagnostic-note">{selfRag.query_rewrite_error}</p>}
-              {selfRag.rescue_attempted && selfRag.rescue_queries.length > 0 && (
-                <div className="rescue-queries">
-                  {selfRag.rescue_queries.map((query) => (
-                    <span key={query}>{query}</span>
-                  ))}
-                </div>
-              )}
-            </article>
+        <section className="center-workspace">
+          {mode === "expert" ? (
+            <ProductExpertWorkbench
+              task={productTask}
+              setTask={setProductTask}
+              loading={loading}
+              requirements={requirements}
+              selectedRequirement={selectedRequirement}
+              selectedRequirementKey={selectedRequirementKey}
+              setSelectedRequirementKey={setSelectedRequirementKey}
+              productMessage={productMessage}
+              requirementCard={requirementCard}
+              similarRequirements={similarRequirements}
+              requirementTimeline={requirementTimeline}
+              solutionRecommendation={solutionRecommendation}
+              changeAnalysis={changeAnalysis}
+              onRun={() => handleRunProductExpert()}
+              onLoadPart={handleLoadProductPart}
+            />
+          ) : (
+            <KnowledgeQaWorkbench
+              question={question}
+              setQuestion={setQuestion}
+              loading={loading}
+              answer={answer}
+              citations={citations}
+              onSearch={handleSearch}
+              onChat={handleChat}
+              feedbackLoadingKey={feedbackLoadingKey}
+              onFeedback={handleFeedback}
+            />
           )}
-
-          {citationCheck && (
-            <article className={`citation-check ${citationCheck.status}`}>
-              <h3>引用检查</h3>
-              <div className="self-rag-grid">
-                <span>状态</span>
-                <b>{citationCheckStatusLabel(citationCheck.status)}</b>
-                <span>支撑分</span>
-                <b>{citationCheck.support_score.toFixed(2)}</b>
-                <span>检查结论数</span>
-                <b>{citationCheck.checked_claim_count}</b>
-              </div>
-              {citationCheck.reasons.length > 0 && (
-                <div className="check-reasons">
-                  {citationCheck.reasons.slice(0, 3).map((reason) => (
-                    <span key={reason}>{reason}</span>
-                  ))}
-                </div>
-              )}
-            </article>
-          )}
-
-          <article className="citations">
-            <h3>引用来源</h3>
-            {citations.length === 0 && <p className="empty">还没有引用来源。</p>}
-            {citations.map((citation, index) => (
-              <div className="citation" key={`${citation.source_path}-${citation.chunk_index}`}>
-                <b>[{index + 1}] {citation.title}</b>
-                <span>
-                  {citation.chunk_header ? `${citation.chunk_header} · ` : ""}
-                  切片 {citation.chunk_index} · 相关度 {citation.score.toFixed(2)}
-                  {citation.feedback_score ? ` · 反馈分 ${citation.feedback_score}` : ""}
-                </span>
-                <p>{citation.summary}</p>
-                <FeedbackActions
-                  sourcePath={citation.source_path}
-                  chunkIndex={citation.chunk_index}
-                  chunkHeader={citation.chunk_header}
-                  loadingKey={feedbackLoadingKey}
-                  onFeedback={handleFeedback}
-                />
-              </div>
-            ))}
-          </article>
         </section>
 
-        <aside className="results">
-          <div className="panel-head">
-            <Search size={18} />
-            <h2>检索结果</h2>
-          </div>
-
-          <div className="search-summary">
-            {lastSearchQuery ? (
-              <span>“{lastSearchQuery}” 命中 {results.length} 条</span>
-            ) : (
-              <span>还没有执行检索</span>
-            )}
-          </div>
-
-          <div className="hit-list">
-            {lastSearchQuery && results.length === 0 && <p className="empty">没有命中文档片段。</p>}
-            {!lastSearchQuery && <p className="empty">检索命中的文档片段会显示在这里。</p>}
-            {results.map((hit) => (
-              <article className="hit" key={`${hit.metadata.source_path}-${hit.metadata.chunk_index}`}>
-                <header>
-                  <b>{hit.metadata.title}</b>
-                  <span>{hit.score.toFixed(2)}</span>
-                </header>
-                <small>
-                  {hit.metadata.chunk_header ? `${hit.metadata.chunk_header} · ` : ""}
-                  切片 {hit.metadata.chunk_index} · {shortPath(hit.metadata.source_path)}
-                </small>
-                {(hit.matched_query || hit.keyword_score !== undefined) && (
-                  <small>
-                    {hit.retrieval_mode ? `召回：${retrievalModeLabel(hit.retrieval_mode)}` : ""}
-                    {hit.keyword_backend === "fts5" ? " · BM25" : ""}
-                    {hit.matched_query ? ` · 匹配问题：${hit.matched_query}` : ""}
-                    {hit.keyword_score !== undefined ? ` · 关键词分 ${hit.keyword_score.toFixed(2)}` : ""}
-                    {hit.keyword_recall_score ? ` · 关键词召回 ${hit.keyword_recall_score.toFixed(2)}` : ""}
-                    {hit.bm25_score !== undefined ? ` · BM25 ${hit.bm25_score.toFixed(2)}` : ""}
-                    {hit.bm25_bonus ? ` · BM25加分 ${hit.bm25_bonus.toFixed(2)}` : ""}
-                    {hit.feedback_score ? ` · 反馈分 ${hit.feedback_score}` : ""}
-                  </small>
-                )}
-                {hit.matched_keywords && hit.matched_keywords.length > 0 && (
-                  <div className="keyword-tags">
-                    {hit.matched_keywords.slice(0, 8).map((keyword) => (
-                      <span key={keyword}>{keyword}</span>
-                    ))}
-                  </div>
-                )}
-                <p>{hit.content}</p>
-                <FeedbackActions
-                  sourcePath={hit.metadata.source_path}
-                  chunkIndex={hit.metadata.chunk_index}
-                  chunkHeader={hit.metadata.chunk_header}
-                  loadingKey={feedbackLoadingKey}
-                  onFeedback={handleFeedback}
-                />
-              </article>
-            ))}
-          </div>
-
-          {selectedDocument && (
-            <section className="preview">
-              <h3>{selectedDocument.title}</h3>
-              <p>{formatDate(selectedDocument.indexed_at)}</p>
-              <pre>{selectedDocument.content_preview}</pre>
-            </section>
+        <aside className="diagnostic-panel">
+          <PanelTitle icon={mode === "expert" ? <GitBranch size={16} /> : <Search size={16} />} title="来源与诊断" />
+          {mode === "expert" ? (
+            <ProductDiagnostics
+              selectedRequirement={selectedRequirement}
+              requirementCard={requirementCard}
+              solutionRecommendation={solutionRecommendation}
+              requirementTimeline={requirementTimeline}
+              changeAnalysis={changeAnalysis}
+              documents={documents}
+            />
+          ) : (
+            <QaDiagnostics
+              results={results}
+              selfRag={selfRag}
+              citationCheck={citationCheck}
+              traces={traces}
+              latestTrace={latestTrace}
+              feedbackLoadingKey={feedbackLoadingKey}
+              onFeedback={handleFeedback}
+            />
           )}
-
-          <section className="product-expert-panel">
-            <h3>产品专家</h3>
-            <button className="panel-action" onClick={handleLoadTermCandidates} disabled={loading === "terms"}>
-              {loading === "terms" ? <Loader2 className="spin" size={15} /> : <Tags size={15} />}
-              挖术语
-            </button>
-            {requirements.length === 0 && <p className="empty">索引文档后会在这里识别需求分组。</p>}
-            {productMessage && <p className="diagnostic-note">{productMessage}</p>}
-            <div className="requirement-list">
-              {requirements.slice(0, 5).map((group) => (
-                <article className="requirement-item" key={group.requirement_key}>
-                  <header>
-                    <b>{group.requirement_title}</b>
-                    <span>{group.document_count} 版</span>
-                  </header>
-                  <small>
-                    {group.project_name} · 置信度 {Math.round(group.confidence * 100)}%
-                  </small>
-                  {group.latest_document && (
-                    <small>
-                      最新：{group.latest_document.version_label} · {shortPath(group.latest_document.source_path)}
-                    </small>
-                  )}
-                  <div className="version-tags">
-                    {group.versions.slice(0, 4).map((version) => (
-                      <span key={`${group.requirement_key}-${version.document_id}`}>
-                        {version.is_latest ? "最新 " : ""}
-                        {version.version_label}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="requirement-actions">
-                    <button onClick={() => handleLoadRequirementCard(group)} disabled={loading === "card"}>
-                      {loading === "card" ? <Loader2 className="spin" size={15} /> : <BookOpen size={15} />}
-                      查看卡片
-                    </button>
-                    <button onClick={() => handleLoadSimilarRequirements(group)} disabled={loading === "similar"}>
-                      {loading === "similar" ? <Loader2 className="spin" size={15} /> : <Sparkles size={15} />}
-                      找相似
-                    </button>
-                    <button onClick={() => handleLoadRequirementTimeline(group)} disabled={loading === "timeline"}>
-                      {loading === "timeline" ? <Loader2 className="spin" size={15} /> : <GitBranch size={15} />}
-                      看演进
-                    </button>
-                    <button onClick={() => handleLoadSolutionRecommendation(group)} disabled={loading === "recommendation"}>
-                      {loading === "recommendation" ? <Loader2 className="spin" size={15} /> : <Lightbulb size={15} />}
-                      出方案
-                    </button>
-                    <button onClick={() => handleAnalyzeRequirement(group)} disabled={loading === "product"}>
-                      {loading === "product" ? <Loader2 className="spin" size={15} /> : <Search size={15} />}
-                      分析变化
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-
-            {termCandidates && (
-              <article className="term-panel">
-                <h3>术语候选</h3>
-                <p>{termCandidates.strategy}</p>
-                {termCandidates.candidates.length === 0 && <p className="empty">当前还没有可审阅的术语候选。</p>}
-                <div className="term-list">
-                  {termCandidates.candidates.slice(0, 12).map((candidate) => (
-                    <article className="term-item" key={`${candidate.status}-${candidate.term}-${candidate.normalized}`}>
-                      <header>
-                        <b>{candidate.term}</b>
-                        <span>{candidateStatusLabel(candidate)}</span>
-                      </header>
-                      <small>
-                        归一：{candidate.normalized} · {candidate.category} · 置信度{" "}
-                        {Math.round(candidate.confidence * 100)}%
-                      </small>
-                      <p>{candidate.reason}</p>
-                      {candidate.matched_terms.length > 0 && (
-                        <div className="version-tags">
-                          {candidate.matched_terms.slice(0, 8).map((term) => (
-                            <span key={`${candidate.term}-${term}`}>{term}</span>
-                          ))}
-                        </div>
-                      )}
-                      <small>来源：{candidate.sources.map(termSourceLabel).join(" / ")}</small>
-                      {candidate.examples[0] && <small>样例：{candidate.examples[0]}</small>}
-                    </article>
-                  ))}
-                </div>
-              </article>
-            )}
-
-            {requirementCard && (
-              <article className="requirement-card">
-                <h3>需求卡片</h3>
-                <p>{requirementCard.summary}</p>
-                <div className={`quality-strip ${requirementCard.quality.status}`}>
-                  <b>{cardQualityLabel(requirementCard.quality.status)}</b>
-                  <span>完整度 {Math.round(requirementCard.quality.completeness_score * 100)}%</span>
-                </div>
-                <div className="keyword-tags">
-                  {requirementCard.impact_modules.map((module) => (
-                    <span key={module.label}>{module.label}</span>
-                  ))}
-                </div>
-                {requirementCard.quality.missing_sections.length > 0 && (
-                  <div className="version-tags">
-                    {requirementCard.quality.missing_sections.map((section) => (
-                      <span key={`missing-${section}`}>缺 {section}</span>
-                    ))}
-                  </div>
-                )}
-                <CardSection title="背景" items={requirementCard.sections.background || []} />
-                <CardSection title="目标" items={requirementCard.sections.goals || []} />
-                <CardSection title="用户/角色" items={requirementCard.sections.users || []} />
-                <CardSection title="范围/功能" items={requirementCard.sections.scope || []} />
-                <CardSection title="关键规则" items={requirementCard.sections.rules || []} />
-                <CardSection title="风险点" items={requirementCard.sections.risks || []} />
-                <CardSection title="验收点" items={requirementCard.sections.acceptance || []} />
-                {requirementCard.field_facts.length > 0 && (
-                  <div className="field-change-list">
-                    {requirementCard.field_facts.slice(0, 6).map((fact) => (
-                      <span key={`${fact.label}-${fact.value}`}>
-                        {fact.label}: {fact.value}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <ChangeList title="复核建议" items={requirementCard.quality.review_notes} />
-                <ChangeList title="待确认" items={requirementCard.open_questions} />
-                <ChangeList title="下一步" items={requirementCard.next_actions} />
-              </article>
-            )}
-
-            {similarRequirements && (
-              <article className="similar-panel">
-                <h3>相似需求</h3>
-                <p>{similarRequirements.strategy}</p>
-                {similarRequirements.similar.length === 0 && <p className="empty">还没有其他需求可用于相似度比较。</p>}
-                <div className="similar-list">
-                  {similarRequirements.similar.map((item) => (
-                    <article className="similar-item" key={item.requirement_key}>
-                      <header>
-                        <b>{item.requirement_title}</b>
-                        <span>{Math.round(item.score * 100)}%</span>
-                      </header>
-                      <small>
-                        {item.project_name} · {item.document_count} 版 · {item.version_label}
-                      </small>
-                      <p>{item.summary}</p>
-                      {item.shared_modules.length > 0 && (
-                        <div className="version-tags">
-                          {item.shared_modules.map((module) => (
-                            <span key={`${item.requirement_key}-${module}`}>{module}</span>
-                          ))}
-                        </div>
-                      )}
-                      {item.reasons.map((reason) => (
-                        <small key={`${item.requirement_key}-${reason}`}>{reason}</small>
-                      ))}
-                    </article>
-                  ))}
-                </div>
-              </article>
-            )}
-
-            {requirementTimeline && (
-              <article className="timeline-panel">
-                <h3>需求演进</h3>
-                <p>{requirementTimeline.trend_summary}</p>
-                <small>{requirementTimeline.strategy}</small>
-
-                {requirementTimeline.recurring_modules.length > 0 && (
-                  <div className="version-tags">
-                    {requirementTimeline.recurring_modules.slice(0, 5).map((module) => (
-                      <span key={module.label}>
-                        {module.label} × {module.count}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="timeline-list">
-                  {requirementTimeline.versions.map((version) => (
-                    <article className={version.is_latest ? "timeline-version latest" : "timeline-version"} key={version.document.id}>
-                      <header>
-                        <b>
-                          {version.sequence}. {version.version_label}
-                        </b>
-                        <span>{version.is_latest ? "最新" : `${version.line_count} 行`}</span>
-                      </header>
-                      <p>{version.summary}</p>
-                      <small>{shortPath(version.document.source_path)}</small>
-                    </article>
-                  ))}
-                </div>
-
-                {requirementTimeline.change_events.length === 0 ? (
-                  <p className="empty">当前只有一个版本，先补历史资料后才能看演进。</p>
-                ) : (
-                  <div className="timeline-list">
-                    {requirementTimeline.change_events.map((event) => (
-                      <article className={`timeline-change ${event.risk_level}`} key={`${event.from_version}-${event.to_version}`}>
-                        <header>
-                          <b>
-                            {event.from_version} → {event.to_version}
-                          </b>
-                          <span>{riskLabel(event.risk_level)}</span>
-                        </header>
-                        <p>{event.summary}</p>
-                        <small>
-                          新增 {event.added_count} · 删除 {event.removed_count} · 字段变化 {event.field_change_count}
-                        </small>
-                        {event.impact_modules.length > 0 && (
-                          <div className="version-tags">
-                            {event.impact_modules.map((module) => (
-                              <span key={`${event.sequence}-${module.label}`}>{module.label}</span>
-                            ))}
-                          </div>
-                        )}
-                        <ChangeList title="风险原因" items={event.risk_reasons} />
-                        <ChangeList title="待确认" items={event.open_questions} />
-                      </article>
-                    ))}
-                  </div>
-                )}
-
-                <ChangeList title="建议动作" items={requirementTimeline.recommendations} />
-              </article>
-            )}
-
-            {solutionRecommendation && (
-              <article className="recommendation-panel">
-                <h3>方案建议</h3>
-                <p>{solutionRecommendation.strategy}</p>
-                <div className={`quality-strip ${solutionRecommendation.confidence.status}`}>
-                  <b>{confidenceLabel(solutionRecommendation.confidence.status)}</b>
-                  <span>置信度 {Math.round(solutionRecommendation.confidence.score * 100)}%</span>
-                </div>
-                <ChangeList title="置信依据" items={solutionRecommendation.confidence.reasons} />
-
-                {solutionRecommendation.recommended_option && (
-                  <article className="recommended-option">
-                    <header>
-                      <b>{solutionRecommendation.recommended_option.name}</b>
-                      <span>{Math.round(solutionRecommendation.recommended_option.score * 100)}%</span>
-                    </header>
-                    <p>{solutionRecommendation.recommended_option.summary}</p>
-                    <small>{solutionRecommendation.recommended_option.when_to_use}</small>
-                  </article>
-                )}
-
-                <div className="option-list">
-                  {solutionRecommendation.options.map((option) => (
-                    <article className="option-item" key={option.name}>
-                      <header>
-                        <b>{option.name}</b>
-                        <span>{Math.round(option.score * 100)}%</span>
-                      </header>
-                      <p>{option.summary}</p>
-                      <ChangeList title="优点" items={option.pros} />
-                      <ChangeList title="限制" items={option.cons} />
-                    </article>
-                  ))}
-                </div>
-
-                <div className="field-change-list">
-                  {solutionRecommendation.decision_factors.map((factor) => (
-                    <span key={factor.label}>
-                      {factor.label}: {factor.detail}
-                    </span>
-                  ))}
-                </div>
-                <ChangeList title="风险" items={solutionRecommendation.risks} />
-                <ChangeList title="验收清单" items={solutionRecommendation.acceptance_checklist} />
-                <ChangeList title="待确认" items={solutionRecommendation.open_questions} />
-                <ChangeList title="下一步" items={solutionRecommendation.next_steps} />
-
-                {solutionRecommendation.evidence_refs.length > 0 && (
-                  <div className="evidence-list">
-                    <b>证据来源</b>
-                    {solutionRecommendation.evidence_refs.map((ref) => (
-                      <span key={`${ref.kind}-${ref.source_path}`}>
-                        {evidenceKindLabel(ref.kind)} · {ref.title}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </article>
-            )}
-
-            {changeAnalysis && (
-              <article className="change-analysis">
-                <h3>变更分析</h3>
-                <p>{changeAnalysis.summary}</p>
-                {changeAnalysis.impact_modules.length > 0 && (
-                  <div className="keyword-tags">
-                    {changeAnalysis.impact_modules.map((module) => (
-                      <span key={module.label}>{module.label}</span>
-                    ))}
-                  </div>
-                )}
-                <ChangeList title="新增" items={changeAnalysis.added} />
-                <ChangeList title="删除" items={changeAnalysis.removed} />
-                {changeAnalysis.field_changes.length > 0 && (
-                  <div className="field-change-list">
-                    {changeAnalysis.field_changes.slice(0, 6).map((change) => (
-                      <span key={`${change.label}-${change.old_value}-${change.new_value}`}>
-                        {change.label}: {change.old_value || "空"} → {change.new_value || "空"}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <ChangeList title="待确认" items={changeAnalysis.open_questions} />
-              </article>
-            )}
-          </section>
-
-          <section className="trace-panel">
-            <h3>RAG 诊断</h3>
-            {traces.length === 0 && <p className="empty">还没有问答诊断记录。</p>}
-            {traces.map((trace) => (
-              <article
-                className={trace.is_refusal || isCitationCheckRisk(trace.citation_check_status) ? "trace-item warning" : "trace-item"}
-                key={trace.id}
-              >
-                <header>
-                  <b>{selfRagStatusLabel(trace.self_rag_status)}</b>
-                  <span>{trace.latency_ms}ms</span>
-                </header>
-                <p>{trace.question}</p>
-                <small>
-                  初始 {trace.initial_best_score.toFixed(2)} · 最终 {trace.final_best_score.toFixed(2)}
-                  {trace.rescue_attempted ? ` · 补救${trace.rescued ? "成功" : "未命中"}` : " · 未补救"}
-                  {` · 引用 ${trace.citation_count}`}
-                </small>
-                <small>
-                  {trace.retrieval_modes.length > 0 ? `召回 ${formatList(trace.retrieval_modes)}` : "召回未记录"}
-                  {trace.rescue_query_source ? ` · 改写 ${trace.query_rewrite_used_llm ? "LLM" : trace.rescue_query_source}` : ""}
-                </small>
-                <small>
-                  引用检查 {citationCheckStatusLabel(trace.citation_check_status || "unknown")} · 支撑{" "}
-                  {(trace.citation_support_score || 0).toFixed(2)} · 结论 {trace.citation_checked_claim_count || 0}
-                </small>
-                {trace.query_rewrite_error && <small>{trace.query_rewrite_error}</small>}
-                {trace.citation_check_reasons?.[0] && <small>{trace.citation_check_reasons[0]}</small>}
-                {trace.cited_titles.length > 0 && <small>{trace.cited_titles.join(" / ")}</small>}
-              </article>
-            ))}
-          </section>
         </aside>
       </section>
     </main>
   );
+}
+
+function ProductExpertWorkbench({
+  task,
+  setTask,
+  loading,
+  requirements,
+  selectedRequirement,
+  selectedRequirementKey,
+  setSelectedRequirementKey,
+  productMessage,
+  requirementCard,
+  similarRequirements,
+  requirementTimeline,
+  solutionRecommendation,
+  changeAnalysis,
+  onRun,
+  onLoadPart
+}: {
+  task: string;
+  setTask: (value: string) => void;
+  loading: LoadingKey;
+  requirements: RequirementGroup[];
+  selectedRequirement: RequirementGroup | null;
+  selectedRequirementKey: string;
+  setSelectedRequirementKey: (value: string) => void;
+  productMessage: string;
+  requirementCard: RequirementCard | null;
+  similarRequirements: SimilarRequirementsResult | null;
+  requirementTimeline: RequirementTimeline | null;
+  solutionRecommendation: SolutionRecommendation | null;
+  changeAnalysis: ChangeAnalysis | null;
+  onRun: () => void;
+  onLoadPart: (kind: "card" | "similar" | "timeline" | "recommendation") => void;
+}) {
+  return (
+    <>
+      <section className="command-panel">
+        <div>
+          <span className="section-kicker">产品专家</span>
+          <h2>让 AI 基于当前资料做产品判断</h2>
+        </div>
+        <div className="requirement-select">
+          <label>
+            当前需求
+            <select value={selectedRequirementKey} onChange={(event) => setSelectedRequirementKey(event.target.value)}>
+              {requirements.length === 0 && <option value="">暂无需求</option>}
+              {requirements.map((requirement) => (
+                <option key={requirement.requirement_key} value={requirement.requirement_key}>
+                  {requirement.requirement_title}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="task-input">
+          <textarea value={task} onChange={(event) => setTask(event.target.value)} />
+          <button className="primary run-button" onClick={onRun} disabled={loading === "expert"}>
+            {loading === "expert" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
+            生成方案
+          </button>
+        </div>
+      </section>
+
+      <section className="work-area">
+        <div className="work-header">
+          <div>
+            <span className="section-kicker">Workspace</span>
+            <h2>工作台</h2>
+          </div>
+          <div className="mini-actions">
+            <button onClick={() => onLoadPart("card")} disabled={loading === "card"}>
+              {loading === "card" ? <Loader2 className="spin" size={15} /> : <FileText size={15} />}
+              需求卡片
+            </button>
+            <button onClick={() => onLoadPart("similar")} disabled={loading === "similar"}>
+              <Search size={15} />
+              相似历史
+            </button>
+            <button onClick={() => onLoadPart("timeline")} disabled={loading === "timeline"}>
+              <History size={15} />
+              演进
+            </button>
+            <button onClick={() => onLoadPart("recommendation")} disabled={loading === "recommendation"}>
+              <Sparkles size={15} />
+              方案
+            </button>
+          </div>
+        </div>
+        <div className="work-stream">
+          {!requirementCard && !similarRequirements && !requirementTimeline && !solutionRecommendation && !changeAnalysis && (
+            <div className="empty-state">
+              <b>等待运行</b>
+              <span>运行后这里会显示材料整理、历史匹配和必要的中间判断。</span>
+            </div>
+          )}
+          {requirementCard && (
+            <article className="insight">
+              <header>
+                <b>{requirementCard.requirement_title}</b>
+                <span>{cardQualityLabel(requirementCard.quality.status)}</span>
+              </header>
+              <p>{requirementCard.summary}</p>
+              <TagList items={requirementCard.impact_modules.map((module) => module.label)} />
+            </article>
+          )}
+          {similarRequirements && (
+            <article className="insight">
+              <header>
+                <b>相似历史</b>
+                <span>{similarRequirements.similar.length} 条</span>
+              </header>
+              {similarRequirements.similar.slice(0, 3).map((item) => (
+                <p key={item.requirement_key}>
+                  {item.requirement_title} · {Math.round(item.score * 100)}% · {item.summary}
+                </p>
+              ))}
+            </article>
+          )}
+          {requirementTimeline && (
+            <article className="insight">
+              <header>
+                <b>需求演进</b>
+                <span>{requirementTimeline.versions.length} 版</span>
+              </header>
+              <p>{requirementTimeline.trend_summary}</p>
+              <TagList items={requirementTimeline.recurring_modules.map((module) => `${module.label} × ${module.count}`)} />
+            </article>
+          )}
+          {changeAnalysis && (
+            <article className="insight">
+              <header>
+                <b>变更分析</b>
+                <span>{changeAnalysis.impact_modules.length} 个影响模块</span>
+              </header>
+              <p>{changeAnalysis.summary}</p>
+              <TagList items={changeAnalysis.impact_modules.map((module) => module.label)} />
+            </article>
+          )}
+        </div>
+      </section>
+
+      <section className="output-panel">
+        <div className="output-header">
+          <div>
+            <span className="section-kicker">Output</span>
+            <h2>产品方案草稿</h2>
+          </div>
+          <span>{productMessage || "可复制 / 可继续追问 / 可生成清单"}</span>
+        </div>
+        {solutionRecommendation ? (
+          <div className="product-output">
+            <article>
+              <h3>{solutionRecommendation.recommended_option.name}</h3>
+              <p>{solutionRecommendation.recommended_option.summary}</p>
+              <small>{solutionRecommendation.recommended_option.when_to_use}</small>
+            </article>
+            <ChangeList title="决策依据" items={solutionRecommendation.decision_factors.map((factor) => `${factor.label}: ${factor.detail}`)} />
+            <ChangeList title="风险" items={solutionRecommendation.risks} />
+            <ChangeList title="验收重点" items={solutionRecommendation.acceptance_checklist} />
+            <ChangeList title="待确认" items={solutionRecommendation.open_questions} />
+            <ChangeList title="下一步" items={solutionRecommendation.next_steps} />
+          </div>
+        ) : (
+          <div className="empty-output">
+            <b>还没有输出</b>
+            <span>选择一个需求后点击“生成方案”。</span>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function KnowledgeQaWorkbench({
+  question,
+  setQuestion,
+  loading,
+  answer,
+  citations,
+  onSearch,
+  onChat,
+  feedbackLoadingKey,
+  onFeedback
+}: {
+  question: string;
+  setQuestion: (value: string) => void;
+  loading: LoadingKey;
+  answer: string;
+  citations: Citation[];
+  onSearch: () => void;
+  onChat: () => void;
+  feedbackLoadingKey: string;
+  onFeedback: (sourcePath: string, chunkIndex: number, chunkHeader: string | undefined, rating: 1 | -1) => void;
+}) {
+  return (
+    <>
+      <section className="command-panel">
+        <div>
+          <span className="section-kicker">知识库问答</span>
+          <h2>查资料、看来源、拒绝无依据回答</h2>
+        </div>
+        <div className="task-input">
+          <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
+          <div className="vertical-actions">
+            <button onClick={onSearch} disabled={loading === "search"}>
+              {loading === "search" ? <Loader2 className="spin" size={18} /> : <Search size={18} />}
+              只检索
+            </button>
+            <button className="primary" onClick={onChat} disabled={loading === "chat"}>
+              {loading === "chat" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
+              AI 回答
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="output-panel qa-answer">
+        <div className="output-header">
+          <div>
+            <span className="section-kicker">Answer</span>
+            <h2>回答</h2>
+          </div>
+        </div>
+        <p>{answer || "先索引文档，再输入问题。没有配置 API Key 时，语义检索仍可用，AI 回答会显示明确提示。"}</p>
+      </section>
+
+      <section className="work-area citation-area">
+        <div className="work-header">
+          <div>
+            <span className="section-kicker">Sources</span>
+            <h2>引用来源</h2>
+          </div>
+          <span>{citations.length} 条</span>
+        </div>
+        <div className="source-list">
+          {citations.length === 0 && <p className="empty">还没有引用来源。</p>}
+          {citations.map((citation, index) => (
+            <article className="source-item" key={`${citation.source_path}-${citation.chunk_index}`}>
+              <header>
+                <b>[{index + 1}] {citation.title}</b>
+                <span>{citation.score.toFixed(2)}</span>
+              </header>
+              <small>
+                {citation.chunk_header ? `${citation.chunk_header} · ` : ""}切片 {citation.chunk_index}
+              </small>
+              <p>{citation.summary}</p>
+              <FeedbackActions
+                sourcePath={citation.source_path}
+                chunkIndex={citation.chunk_index}
+                chunkHeader={citation.chunk_header}
+                loadingKey={feedbackLoadingKey}
+                onFeedback={onFeedback}
+              />
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function ProductDiagnostics({
+  selectedRequirement,
+  requirementCard,
+  solutionRecommendation,
+  requirementTimeline,
+  changeAnalysis,
+  documents
+}: {
+  selectedRequirement: RequirementGroup | null;
+  requirementCard: RequirementCard | null;
+  solutionRecommendation: SolutionRecommendation | null;
+  requirementTimeline: RequirementTimeline | null;
+  changeAnalysis: ChangeAnalysis | null;
+  documents: DocumentItem[];
+}) {
+  return (
+    <div className="diagnostic-stack">
+      <DiagnosticCard title="资料覆盖">
+        <p>{documents.length} 个文件已进入当前知识库。</p>
+        <Progress value={documents.length > 0 ? 72 : 0} />
+      </DiagnosticCard>
+      <DiagnosticCard title="当前需求">
+        <p>{selectedRequirement ? selectedRequirement.requirement_title : "暂无需求"}</p>
+        {selectedRequirement && <small>{selectedRequirement.document_count} 版 · {selectedRequirement.project_name}</small>}
+      </DiagnosticCard>
+      <DiagnosticCard title="引用来源">
+        {solutionRecommendation?.evidence_refs.length ? (
+          solutionRecommendation.evidence_refs.slice(0, 4).map((ref) => (
+            <span className="line" key={`${ref.kind}-${ref.source_path}`}>{evidenceKindLabel(ref.kind)} · {ref.title}</span>
+          ))
+        ) : (
+          <p>生成方案后显示引用来源。</p>
+        )}
+      </DiagnosticCard>
+      <DiagnosticCard title="当前问题" tone="warn">
+        <ChangeList
+          title=""
+          items={[
+            ...(requirementCard?.open_questions || []),
+            ...(solutionRecommendation?.open_questions || []),
+            ...(changeAnalysis?.open_questions || [])
+          ].slice(0, 4)}
+        />
+        {!requirementCard && !solutionRecommendation && <p>还没有运行产品专家分析。</p>}
+      </DiagnosticCard>
+      <DiagnosticCard title="可信度">
+        <p>{solutionRecommendation ? confidenceLabel(solutionRecommendation.confidence.status) : "待判断"}</p>
+        {solutionRecommendation && <Progress value={Math.round(solutionRecommendation.confidence.score * 100)} />}
+      </DiagnosticCard>
+      {requirementTimeline && (
+        <DiagnosticCard title="历史演进">
+          <p>{requirementTimeline.versions.length} 个版本，{requirementTimeline.change_events.length} 次变更。</p>
+        </DiagnosticCard>
+      )}
+    </div>
+  );
+}
+
+function QaDiagnostics({
+  results,
+  selfRag,
+  citationCheck,
+  traces,
+  latestTrace,
+  feedbackLoadingKey,
+  onFeedback
+}: {
+  results: SearchHit[];
+  selfRag: SelfRagStatus | null;
+  citationCheck: CitationCheck | null;
+  traces: RagTrace[];
+  latestTrace: RagTrace | null;
+  feedbackLoadingKey: string;
+  onFeedback: (sourcePath: string, chunkIndex: number, chunkHeader: string | undefined, rating: 1 | -1) => void;
+}) {
+  return (
+    <div className="diagnostic-stack">
+      <DiagnosticCard title="Self-RAG">
+        {selfRag ? (
+          <>
+            <p>{selfRagStatusLabel(selfRag.status)}</p>
+            <small>最高分 {selfRag.final_best_score.toFixed(2)} / 阈值 {selfRag.min_evidence_score.toFixed(2)}</small>
+            <Progress value={Math.round((selfRag.final_best_score / Math.max(selfRag.min_evidence_score, 0.01)) * 70)} />
+          </>
+        ) : (
+          <p>问答后显示证据阈值和补救状态。</p>
+        )}
+      </DiagnosticCard>
+      <DiagnosticCard title="引用检查" tone={citationCheck && isCitationCheckRisk(citationCheck.status) ? "warn" : "normal"}>
+        {citationCheck ? (
+          <>
+            <p>{citationCheckStatusLabel(citationCheck.status)}</p>
+            <small>支撑分 {citationCheck.support_score.toFixed(2)} · 结论 {citationCheck.checked_claim_count}</small>
+          </>
+        ) : (
+          <p>问答后检查答案是否被引用支撑。</p>
+        )}
+      </DiagnosticCard>
+      <DiagnosticCard title="检索结果">
+        <div className="hit-list">
+          {results.length === 0 && <p>暂无命中。</p>}
+          {results.slice(0, 5).map((hit) => (
+            <article className="hit" key={`${hit.metadata.source_path}-${hit.metadata.chunk_index}`}>
+              <header>
+                <b>{hit.metadata.title}</b>
+                <span>{hit.score.toFixed(2)}</span>
+              </header>
+              <small>{retrievalModeLabel(hit.retrieval_mode || "vector")} · 切片 {hit.metadata.chunk_index}</small>
+              <p>{hit.metadata.summary || hit.content.slice(0, 100)}</p>
+              <FeedbackActions
+                sourcePath={hit.metadata.source_path}
+                chunkIndex={hit.metadata.chunk_index}
+                chunkHeader={hit.metadata.chunk_header}
+                loadingKey={feedbackLoadingKey}
+                onFeedback={onFeedback}
+              />
+            </article>
+          ))}
+        </div>
+      </DiagnosticCard>
+      <DiagnosticCard title="最近 Trace">
+        {latestTrace ? (
+          <>
+            <p>{latestTrace.question}</p>
+            <small>
+              {selfRagStatusLabel(latestTrace.self_rag_status)} · {latestTrace.latency_ms}ms · 引用 {latestTrace.citation_count}
+            </small>
+          </>
+        ) : (
+          <p>暂无诊断记录。</p>
+        )}
+        <small>共 {traces.length} 条记录</small>
+      </DiagnosticCard>
+    </div>
+  );
+}
+
+function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="panel-title">
+      {icon}
+      <h2>{title}</h2>
+    </div>
+  );
+}
+
+function StatusDot({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="status-dot">
+      <span>{label}</span>
+      <b>{value}</b>
+    </div>
+  );
+}
+
+function Notice({ icon, text, tone = "normal" }: { icon: React.ReactNode; text: string; tone?: "normal" | "error" }) {
+  return (
+    <div className={`notice ${tone}`}>
+      {icon}
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function DiagnosticCard({
+  title,
+  children,
+  tone = "normal"
+}: {
+  title: string;
+  children: React.ReactNode;
+  tone?: "normal" | "warn";
+}) {
+  return (
+    <article className={`diagnostic-card ${tone}`}>
+      <h3>{title}</h3>
+      {children}
+    </article>
+  );
+}
+
+function Progress({ value }: { value: number }) {
+  return (
+    <div className="progress" aria-label={`进度 ${Math.min(100, Math.max(0, value))}%`}>
+      <span style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+    </div>
+  );
+}
+
+function ChangeList({ title, items }: { title: string; items: string[] }) {
+  const visibleItems = items.filter(Boolean).slice(0, 6);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="change-list">
+      {title && <b>{title}</b>}
+      {visibleItems.map((item) => (
+        <span key={`${title}-${item}`}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
+function TagList({ items }: { items: string[] }) {
+  const visibleItems = items.filter(Boolean).slice(0, 8);
+  if (visibleItems.length === 0) return null;
+  return (
+    <div className="tag-list">
+      {visibleItems.map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
+function FeedbackActions({
+  sourcePath,
+  chunkIndex,
+  chunkHeader,
+  loadingKey,
+  onFeedback
+}: {
+  sourcePath: string;
+  chunkIndex: number;
+  chunkHeader?: string;
+  loadingKey: string;
+  onFeedback: (sourcePath: string, chunkIndex: number, chunkHeader: string | undefined, rating: 1 | -1) => void;
+}) {
+  const upKey = `${sourcePath}-${chunkIndex}-1`;
+  const downKey = `${sourcePath}-${chunkIndex}--1`;
+  return (
+    <div className="feedback-actions">
+      <button
+        aria-label="标记这个片段有帮助"
+        title="有帮助"
+        disabled={loadingKey === upKey || loadingKey === downKey}
+        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, 1)}
+      >
+        {loadingKey === upKey ? <Loader2 className="spin" size={14} /> : <ThumbsUp size={14} />}
+      </button>
+      <button
+        aria-label="标记这个片段不够相关"
+        title="没帮助"
+        disabled={loadingKey === upKey || loadingKey === downKey}
+        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, -1)}
+      >
+        {loadingKey === downKey ? <Loader2 className="spin" size={14} /> : <ThumbsDown size={14} />}
+      </button>
+    </div>
+  );
+}
+
+function buildFolderRows(documents: DocumentItem[]) {
+  const folders = new Set<string>();
+  const rows: Array<{ id: string; kind: "folder" | "file"; title: string; meta: string; documentId?: string }> = [];
+  documents.forEach((document) => {
+    const parts = document.source_path.split(/[\\/]/).filter(Boolean);
+    const folder = parts.length > 1 ? parts[parts.length - 2] : "docs";
+    if (!folders.has(folder)) {
+      folders.add(folder);
+      rows.push({ id: `folder-${folder}`, kind: "folder", title: folder, meta: "folder" });
+    }
+    rows.push({
+      id: document.id,
+      kind: "file",
+      title: document.title,
+      meta: `${document.file_type} · ${document.chunk_count}`,
+      documentId: document.id
+    });
+  });
+  return rows;
 }
 
 function retrievalModeLabel(mode: string) {
@@ -907,10 +956,6 @@ function retrievalModeLabel(mode: string) {
   if (mode === "bm25") return "BM25";
   if (mode === "keyword") return "关键词";
   return "向量";
-}
-
-function formatList(values: string[]) {
-  return values.map(retrievalModeLabel).join(" / ");
 }
 
 function selfRagStatusLabel(status: SelfRagStatus["status"] | "unknown" | string) {
@@ -941,14 +986,6 @@ function cardQualityLabel(status: string) {
   return "未评估";
 }
 
-function riskLabel(level: string) {
-  if (level === "high") return "高风险";
-  if (level === "medium") return "中风险";
-  if (level === "low") return "低风险";
-  if (level === "stable") return "稳定";
-  return "待判断";
-}
-
 function confidenceLabel(status: string) {
   if (status === "high") return "依据较充分";
   if (status === "medium") return "可作初稿";
@@ -961,82 +998,6 @@ function evidenceKindLabel(kind: string) {
   if (kind === "similar_requirement") return "相似历史";
   if (kind === "timeline_version") return "历史版本";
   return "证据";
-}
-
-function candidateStatusLabel(candidate: DomainTermCandidate) {
-  if (candidate.status === "known") return "已在词表";
-  if (candidate.sources.includes("low_score_question")) return "优先复核";
-  return "候选";
-}
-
-function termSourceLabel(source: string) {
-  if (source === "document") return "文档";
-  if (source === "low_score_question") return "低分问题";
-  return source;
-}
-
-function FeedbackActions({
-  sourcePath,
-  chunkIndex,
-  chunkHeader,
-  loadingKey,
-  onFeedback
-}: {
-  sourcePath: string;
-  chunkIndex: number;
-  chunkHeader?: string;
-  loadingKey: string;
-  onFeedback: (sourcePath: string, chunkIndex: number, chunkHeader: string | undefined, rating: 1 | -1) => void;
-}) {
-  const upKey = `${sourcePath}-${chunkIndex}-1`;
-  const downKey = `${sourcePath}-${chunkIndex}--1`;
-  return (
-    <div className="feedback-actions">
-      <button
-        aria-label="标记这个片段有帮助"
-        title="有帮助"
-        disabled={loadingKey === upKey || loadingKey === downKey}
-        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, 1)}
-      >
-        {loadingKey === upKey ? <Loader2 className="spin" size={15} /> : <ThumbsUp size={15} />}
-      </button>
-      <button
-        aria-label="标记这个片段不够相关"
-        title="没帮助"
-        disabled={loadingKey === upKey || loadingKey === downKey}
-        onClick={() => onFeedback(sourcePath, chunkIndex, chunkHeader, -1)}
-      >
-        {loadingKey === downKey ? <Loader2 className="spin" size={15} /> : <ThumbsDown size={15} />}
-      </button>
-    </div>
-  );
-}
-
-function Status({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="status">
-      {icon}
-      <span>{label}</span>
-      <b>{value}</b>
-    </div>
-  );
-}
-
-function ChangeList({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="change-list">
-      <b>{title}</b>
-      {items.slice(0, 5).map((item) => (
-        <span key={`${title}-${item}`}>{item}</span>
-      ))}
-    </div>
-  );
-}
-
-function CardSection({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return <ChangeList title={title} items={items} />;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

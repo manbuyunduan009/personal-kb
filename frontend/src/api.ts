@@ -328,13 +328,22 @@ export type IndexResult = {
 };
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-    ...options
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: { "Content-Type": "application/json" },
+      ...options
+    });
+  } catch (error) {
+    throw new Error(`后端接口暂时不可用：${(error as Error).message}`);
+  }
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("text/html") || text.trim().startsWith("<")) {
+      throw new Error(`后端接口请求失败：${response.status} ${response.statusText || ""}`.trim());
+    }
+    throw new Error(text || `后端接口请求失败：${response.status}`);
   }
   return response.json() as Promise<T>;
 }
