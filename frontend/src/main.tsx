@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertCircle,
-  BookOpen,
   Database,
   FileText,
   FolderOpen,
@@ -10,9 +9,7 @@ import {
   History,
   Loader2,
   MessageSquareText,
-  Play,
   Search,
-  Server,
   Sparkles,
   ThumbsDown,
   ThumbsUp
@@ -228,7 +225,7 @@ function App() {
 
   async function handleRunProductExpert(group = selectedRequirement) {
     if (!group) {
-      setProductMessage("当前还没有可分析的需求，请先索引资料。");
+      setProductMessage("没有可分析的需求。");
       return;
     }
     setMode("expert");
@@ -294,8 +291,7 @@ function App() {
     <main className="app-shell">
       <header className="app-topbar">
         <div className="brand-block">
-          <span className="eyebrow">Personal KB</span>
-          <h1>AI 产品知识工作台</h1>
+          <h1>产品知识工作台</h1>
         </div>
         <div className="mode-switch" aria-label="工作模式">
           <button className={mode === "expert" ? "active" : ""} onClick={() => setMode("expert")}>
@@ -305,15 +301,6 @@ function App() {
           <button className={mode === "qa" ? "active" : ""} onClick={() => setMode("qa")}>
             <MessageSquareText size={16} />
             知识库问答
-          </button>
-        </div>
-        <div className="top-actions">
-          <StatusDot label="后端" value={health?.ok ? "已连接" : "未连接"} />
-          <StatusDot label="文档" value={`${documents.length} 个`} />
-          <StatusDot label="向量" value={health?.embedding_provider || "未知"} />
-          <button onClick={handleIndex} disabled={loading === "index"}>
-            {loading === "index" ? <Loader2 className="spin" size={16} /> : <Play size={16} />}
-            打开/索引文件夹
           </button>
         </div>
       </header>
@@ -342,7 +329,7 @@ function App() {
             <span>{documents.length} 个文件 · {health?.chunk_count ?? health?.chroma_count ?? 0} 个片段</span>
           </div>
           <div className="file-tree">
-            {documents.length === 0 && <p className="empty">还没有索引文档。</p>}
+            {documents.length === 0 && <p className="empty">未索引</p>}
             {folderRows.map((row) => (
               <button
                 key={row.id}
@@ -455,8 +442,7 @@ function ProductExpertWorkbench({
     <>
       <section className="command-panel">
         <div>
-          <span className="section-kicker">产品专家</span>
-          <h2>让 AI 基于当前资料做产品判断</h2>
+          <h2>产品判断</h2>
         </div>
         <div className="requirement-select">
           <label>
@@ -483,7 +469,6 @@ function ProductExpertWorkbench({
       <section className="work-area">
         <div className="work-header">
           <div>
-            <span className="section-kicker">Workspace</span>
             <h2>工作台</h2>
           </div>
           <div className="mini-actions">
@@ -509,7 +494,7 @@ function ProductExpertWorkbench({
           {!requirementCard && !similarRequirements && !requirementTimeline && !solutionRecommendation && !changeAnalysis && (
             <div className="empty-state">
               <b>等待运行</b>
-              <span>运行后这里会显示材料整理、历史匹配和必要的中间判断。</span>
+              <span>未运行</span>
             </div>
           )}
           {requirementCard && (
@@ -561,10 +546,9 @@ function ProductExpertWorkbench({
       <section className="output-panel">
         <div className="output-header">
           <div>
-            <span className="section-kicker">Output</span>
             <h2>产品方案草稿</h2>
           </div>
-          <span>{productMessage || "可复制 / 可继续追问 / 可生成清单"}</span>
+          {productMessage && <span>{productMessage}</span>}
         </div>
         {solutionRecommendation ? (
           <div className="product-output">
@@ -581,8 +565,7 @@ function ProductExpertWorkbench({
           </div>
         ) : (
           <div className="empty-output">
-            <b>还没有输出</b>
-            <span>选择一个需求后点击“生成方案”。</span>
+            <b>暂无输出</b>
           </div>
         )}
       </section>
@@ -615,8 +598,7 @@ function KnowledgeQaWorkbench({
     <>
       <section className="command-panel">
         <div>
-          <span className="section-kicker">知识库问答</span>
-          <h2>查资料、看来源、拒绝无依据回答</h2>
+          <h2>知识库问答</h2>
         </div>
         <div className="task-input">
           <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
@@ -627,7 +609,7 @@ function KnowledgeQaWorkbench({
             </button>
             <button className="primary" onClick={onChat} disabled={loading === "chat"}>
               {loading === "chat" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-              AI 回答
+              生成回答
             </button>
           </div>
         </div>
@@ -636,23 +618,21 @@ function KnowledgeQaWorkbench({
       <section className="output-panel qa-answer">
         <div className="output-header">
           <div>
-            <span className="section-kicker">Answer</span>
             <h2>回答</h2>
           </div>
         </div>
-        <p>{answer || "先索引文档，再输入问题。没有配置 API Key 时，语义检索仍可用，AI 回答会显示明确提示。"}</p>
+        <p>{answer || "暂无回答"}</p>
       </section>
 
       <section className="work-area citation-area">
         <div className="work-header">
           <div>
-            <span className="section-kicker">Sources</span>
             <h2>引用来源</h2>
           </div>
           <span>{citations.length} 条</span>
         </div>
         <div className="source-list">
-          {citations.length === 0 && <p className="empty">还没有引用来源。</p>}
+          {citations.length === 0 && <p className="empty">暂无引用</p>}
           {citations.map((citation, index) => (
             <article className="source-item" key={`${citation.source_path}-${citation.chunk_index}`}>
               <header>
@@ -709,7 +689,7 @@ function ProductDiagnostics({
             <span className="line" key={`${ref.kind}-${ref.source_path}`}>{evidenceKindLabel(ref.kind)} · {ref.title}</span>
           ))
         ) : (
-          <p>生成方案后显示引用来源。</p>
+          <p>暂无引用</p>
         )}
       </DiagnosticCard>
       <DiagnosticCard title="当前问题" tone="warn">
@@ -721,7 +701,7 @@ function ProductDiagnostics({
             ...(changeAnalysis?.open_questions || [])
           ].slice(0, 4)}
         />
-        {!requirementCard && !solutionRecommendation && <p>还没有运行产品专家分析。</p>}
+        {!requirementCard && !solutionRecommendation && <p>未运行</p>}
       </DiagnosticCard>
       <DiagnosticCard title="可信度">
         <p>{solutionRecommendation ? confidenceLabel(solutionRecommendation.confidence.status) : "待判断"}</p>
@@ -763,7 +743,7 @@ function QaDiagnostics({
             <Progress value={Math.round((selfRag.final_best_score / Math.max(selfRag.min_evidence_score, 0.01)) * 70)} />
           </>
         ) : (
-          <p>问答后显示证据阈值和补救状态。</p>
+          <p>暂无诊断</p>
         )}
       </DiagnosticCard>
       <DiagnosticCard title="引用检查" tone={citationCheck && isCitationCheckRisk(citationCheck.status) ? "warn" : "normal"}>
@@ -778,7 +758,7 @@ function QaDiagnostics({
       </DiagnosticCard>
       <DiagnosticCard title="检索结果">
         <div className="hit-list">
-          {results.length === 0 && <p>暂无命中。</p>}
+          {results.length === 0 && <p>暂无命中</p>}
           {results.slice(0, 5).map((hit) => (
             <article className="hit" key={`${hit.metadata.source_path}-${hit.metadata.chunk_index}`}>
               <header>
@@ -807,7 +787,7 @@ function QaDiagnostics({
             </small>
           </>
         ) : (
-          <p>暂无诊断记录。</p>
+          <p>暂无记录</p>
         )}
         <small>共 {traces.length} 条记录</small>
       </DiagnosticCard>
@@ -820,15 +800,6 @@ function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
     <div className="panel-title">
       {icon}
       <h2>{title}</h2>
-    </div>
-  );
-}
-
-function StatusDot({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="status-dot">
-      <span>{label}</span>
-      <b>{value}</b>
     </div>
   );
 }
@@ -937,7 +908,7 @@ function buildFolderRows(documents: DocumentItem[]) {
     const folder = parts.length > 1 ? parts[parts.length - 2] : "docs";
     if (!folders.has(folder)) {
       folders.add(folder);
-      rows.push({ id: `folder-${folder}`, kind: "folder", title: folder, meta: "folder" });
+      rows.push({ id: `folder-${folder}`, kind: "folder", title: folder, meta: "文件夹" });
     }
     rows.push({
       id: document.id,

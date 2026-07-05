@@ -335,17 +335,25 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
       ...options
     });
   } catch (error) {
-    throw new Error(`后端接口暂时不可用：${(error as Error).message}`);
+    throw new Error("后端接口暂时不可用，请确认后端服务已启动。");
   }
   if (!response.ok) {
     const text = await response.text();
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("text/html") || text.trim().startsWith("<")) {
-      throw new Error(`后端接口请求失败：${response.status} ${response.statusText || ""}`.trim());
+      throw new Error(`后端接口请求失败，请确认后端服务已启动。状态码 ${response.status}`);
     }
-    throw new Error(text || `后端接口请求失败：${response.status}`);
+    throw new Error(toReadableApiError(text, response.status));
   }
   return response.json() as Promise<T>;
+}
+
+function toReadableApiError(text: string, status: number) {
+  const message = text.trim();
+  if (!message || /file not found/i.test(message) || /not found/i.test(message)) {
+    return `后端接口请求失败，请确认后端服务已启动。状态码 ${status}`;
+  }
+  return message;
 }
 
 export function getHealth() {
